@@ -17,9 +17,9 @@ namespace domain {
         std::uintmax_t directFilesCount = 0;
         std::uintmax_t directFilesSizeBytes = 0;
 
-        // Статистика поддерева (включая все вложенные директории)
-        std::uintmax_t totalFilesCount = 0;
-        std::uintmax_t totalSizeBytes = 0;
+        // Статистика поддерева (только вложенные директории)
+        std::uintmax_t subtreeFilesCount = 0;
+        std::uintmax_t subtreeSizeBytes = 0;
 
         /** @brief Статистика по категориям (фиксированный размер) */
         static constexpr std::size_t CategoryCount = FileCategoryCount;

@@ -22,6 +22,9 @@ namespace domain
         System,       ///< Системные файлы
         Other         ///< Прочие файлы
     };
-
+    
+    /**
+	 * @brief ограничение количества категорий для статической аллокации массивов в DirectoryStatistics.
+     */
     constexpr std::size_t FileCategoryCount = 10;
 }       // namespace domain

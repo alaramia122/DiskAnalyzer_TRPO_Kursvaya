@@ -1,24 +1,26 @@
 #include "DirectoryStatistics.h"
-#include <algorithm> // для std::min
+#include <algorithm> // не используется в текущей версии, можно убрать позже
 
 namespace domain {
 
     void DirectoryStatistics::addFile(FileCategory category, std::uintmax_t sizeBytes)
     {
-        // Прямая статистика
-        directFilesCount++;
-        directFilesSizeBytes += sizeBytes;
+        // 1. Обновляем ПРЯМУЮ статистику текущей директории
+        directFilesCount++;                    // +1 файл непосредственно в папке
+        directFilesSizeBytes += sizeBytes;     // добавляем размер файла
 
-        // Статистика по категориям
+        // 2. Обновляем статистику по категориям
         std::size_t idx = static_cast<std::size_t>(category);
+
+        // Защита от некорректного значения enum (defense programming)
         if (idx < CategoryCount)
         {
-            categoryFilesCount[idx]++;
-            categorySizesBytes[idx] += sizeBytes;
+            categoryFilesCount[idx]++;         // увеличиваем счётчик файлов категории
+            categorySizesBytes[idx] += sizeBytes; // увеличиваем суммарный размер категории
         }
         else
         {
-            // Защита от некорректного enum
+            // Если вдруг категория вышла за пределы (ошибка в коде) — падаем в Unknown
             categoryFilesCount[static_cast<std::size_t>(FileCategory::Unknown)]++;
             categorySizesBytes[static_cast<std::size_t>(FileCategory::Unknown)] += sizeBytes;
         }
@@ -26,10 +28,11 @@ namespace domain {
 
     void DirectoryStatistics::mergeSubtree(const DirectoryStatistics& subtree)
     {
-        // Слияние статистики поддерева
-        totalFilesCount += subtree.totalFilesCount;
-        totalSizeBytes += subtree.totalSizeBytes;
+        // Добавляем статистику из поддерева (только вложенные папки)
+        subtreeFilesCount += subtree.directFilesCount + subtree.subtreeFilesCount;
+        subtreeSizeBytes += subtree.directFilesSizeBytes + subtree.subtreeSizeBytes;
 
+        // Категории тоже суммируем полностью
         for (std::size_t i = 0; i < CategoryCount; ++i)
         {
             categoryFilesCount[i] += subtree.categoryFilesCount[i];
