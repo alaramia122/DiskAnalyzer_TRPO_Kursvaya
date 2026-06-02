@@ -17,7 +17,7 @@ find_package(Qt5 REQUIRED COMPONENTS
 
 add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/main.cpp
- "src/domain/enums/FileCategory.h" "src/domain/enums/ScanStatus.h" "src/domain/enums/ExportFormat.h" "src/domain/models/FileInfo.h" "src/domain/enums/FileSystemObjectType.h" "src/domain/models/DirectoryStatistics.h" "src/domain/models/DirectoryNode.h" "src/domain/models/AnalysisResult.h")
+ "src/domain/enums/FileCategory.h" "src/domain/enums/ScanStatus.h" "src/domain/enums/ExportFormat.h" "src/domain/models/FileInfo.h" "src/domain/enums/FileSystemObjectType.h" "src/domain/models/DirectoryStatistics.h" "src/domain/models/DirectoryNode.h" "src/domain/models/AnalysisResult.h" "src/domain/models/DirectoryStatistics.cpp")
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
     Qt5::Core
