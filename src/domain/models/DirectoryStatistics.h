@@ -3,28 +3,74 @@
 #include <array>
 #include "../enums/FileCategory.h"
 
-namespace domain {
+
+namespace domain
+{
+    /**
+     * @brief Статистика файлов по категориям.
+     *
+     * Хранит суммарный размер и количество файлов
+     * для каждой категории.
+     */
+    struct CategoryStatistics
+    {
+        /**
+         * @brief Суммарный размер файлов по категориям.
+         *
+         * Индекс массива соответствует значению FileCategory.
+         */
+        std::array<uintmax_t, FileCategoryCount> sizesBytes{};
+
+        /**
+         * @brief Количество файлов по категориям.
+         *
+         * Индекс массива соответствует значению FileCategory.
+         */
+        std::array<uintmax_t, FileCategoryCount> filesCount{};
+    };
 
     /**
-     * @brief Статистика по одной директории.
+     * @brief Статистика файлов в пределах определенной области.
      *
-     * @details Содержит как прямую статистику (только содержимое директории),
-     *          так и агрегированную статистику всего поддерева.
-     *          Используется в DirectoryNode и AnalysisResult.
+     * Используется как для текущей директории (direct),
+     * так и для всего поддерева (subtree).
      */
-    struct DirectoryStatistics {
-        // Прямая статистика (только объекты непосредственно в этой директории)
-        std::uintmax_t directFilesCount = 0;
-        std::uintmax_t directFilesSizeBytes = 0;
+    struct ScopeStatistics
+    {
+        /**
+         * @brief Общее количество файлов.
+         */
+        uint64_t filesCount = 0;
 
-        // Статистика поддерева (только вложенные директории)
-        std::uintmax_t subtreeFilesCount = 0;
-        std::uintmax_t subtreeSizeBytes = 0;
+        /**
+         * @brief Суммарный размер файлов в байтах.
+         */
+        uint64_t filesSizeBytes = 0;
 
-        /** @brief Статистика по категориям (фиксированный размер) */
-        static constexpr std::size_t CategoryCount = FileCategoryCount;
-        std::array<std::uintmax_t, CategoryCount> categorySizesBytes{};
-        std::array<std::uintmax_t, CategoryCount> categoryFilesCount{};
+        /**
+         * @brief Статистика по категориям файлов.
+         */
+        CategoryStatistics categories;
+    };
+
+    /**
+     * @brief Полная статистика директории.
+     *
+     * Содержит статистику:
+     * - только текущей директории;
+     * - всей директории вместе с вложенными каталогами.
+     */
+    struct DirectoryStatistics
+    {
+        /**
+         * @brief Статистика только текущей директории.
+         */
+        ScopeStatistics direct;
+
+        /**
+         * @brief Статистика директории и всего ее поддерева.
+         */
+        ScopeStatistics subtree;
 
         /**
          * @brief Добавляет информацию об одном файле в прямую статистику.
@@ -38,10 +84,14 @@ namespace domain {
          * @param subtree Статистика дочерней директории
          * @details Не изменяет direct-статистику.
          */
-        void mergeSubtree(const DirectoryStatistics& subtree);
+        void mergeSubtree(const DirectoryStatistics& import_subtree);
 
-        std::uintmax_t getCategorySize(FileCategory cat) const;
-        std::uintmax_t getCategoryCount(FileCategory cat) const;
+        std::uintmax_t getSubtreeCategorySize(FileCategory cat) const;
+        std::uintmax_t getSubtreeCategoryCount(FileCategory cat) const;
+        std::uintmax_t getDirectCategorySize(FileCategory cat) const;
+        std::uintmax_t getDirectCategoryCount(FileCategory cat) const;
+        std::uintmax_t getTotalCategorySize(FileCategory cat) const;
+        std::uintmax_t getTotalCategoryCount(FileCategory cat) const;
     };
 
 } // namespace domain
