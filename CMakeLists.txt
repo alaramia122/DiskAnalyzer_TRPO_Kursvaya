@@ -17,7 +17,18 @@ find_package(Qt5 REQUIRED COMPONENTS
 
 add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/main.cpp
- "src/domain/enums/FileCategory.h" "src/domain/enums/ScanStatus.h" "src/domain/enums/ExportFormat.h" "src/domain/models/FileInfo.h" "src/domain/enums/FileSystemObjectType.h" "src/domain/models/DirectoryStatistics.h" "src/domain/models/DirectoryNode.h" "src/domain/models/AnalysisResult.h" "src/domain/models/DirectoryStatistics.cpp")
+
+    src/domain/enums/FileCategory.h
+    src/domain/enums/ScanStatus.h
+    src/domain/enums/ExportFormat.h
+    src/domain/enums/FileSystemObjectType.h
+
+    src/domain/models/FileInfo.h
+    src/domain/models/DirectoryStatistics.h
+    src/domain/models/DirectoryStatistics.cpp
+    src/domain/models/DirectoryNode.h
+    src/domain/models/AnalysisResult.h
+ "src/domain/models/DirectoryNode.cpp" "src/domain/models/AnalysisResult.cpp")
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
     Qt5::Core
@@ -31,35 +42,20 @@ target_include_directories(DiskAnalyzer_TRPO_Kursovaya PRIVATE
 
 if(WIN32)
 
-    set(QT_ROOT
-        "D:/Qt5.15.14-Windows-x86_64-VS2017-15.9.62-20240527/Qt5.15.14-Windows-x86_64-VS2017-15.9.62"
+    get_target_property(QMAKE_EXE Qt5::qmake IMPORTED_LOCATION)
+    get_filename_component(QT_BIN_DIR "${QMAKE_EXE}" DIRECTORY)
+
+    find_program(WINDEPLOYQT_EXECUTABLE
+        windeployqt
+        HINTS "${QT_BIN_DIR}"
     )
 
-    set(QT_BIN_DIR "${QT_ROOT}/bin")
-    set(QT_PLUGINS_DIR "${QT_ROOT}/plugins")
-
-    add_custom_command(TARGET  DiskAnalyzer_TRPO_Kursovaya  POST_BUILD
-
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_BIN_DIR}/Qt5Core.dll"
-            $<TARGET_FILE_DIR:DiskAnalyzer_TRPO_Kursovaya>
-
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_BIN_DIR}/Qt5Gui.dll"
-            $<TARGET_FILE_DIR:DiskAnalyzer_TRPO_Kursovaya>
-
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_BIN_DIR}/Qt5Widgets.dll"
-            $<TARGET_FILE_DIR:DiskAnalyzer_TRPO_Kursovaya>
-
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:DiskAnalyzer_TRPO_Kursovaya>/platforms"
-
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${QT_PLUGINS_DIR}/platforms/qwindows.dll"
-            "$<TARGET_FILE_DIR:DiskAnalyzer_TRPO_Kursovaya>/platforms"
-
-        COMMENT "Copying Qt runtime dependencies..."
+    add_custom_command(TARGET DiskAnalyzer_TRPO_Kursovaya POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --no-translations
+                --no-system-d3d-compiler
+                "$<TARGET_FILE:DiskAnalyzer_TRPO_Kursovaya>"
+        COMMENT "Deploying Qt runtime..."
     )
 
 endif()

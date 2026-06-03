@@ -74,11 +74,20 @@ namespace domain {
         /**
          * @brief Возвращает статистику текущей директории.
          */
-        DirectoryStatistics getCurrentStatistics() const;
+        const DirectoryStatistics& getCurrentStatistics() const;
 
     private:
         /** Корневой узел дерева */
         std::unique_ptr<DirectoryNode> root_;
+
+        /**
+         * @brief Текущий отображаемый узел дерева каталогов.
+         *
+         * Используется для навигации между каталогами и получения
+         * статистики текущего уровня без необходимости повторного
+         * поиска по дереву.
+         */
+        DirectoryNode* currentNode_ = nullptr;
 
         /**
          * @brief Рекурсивный поиск узла по пути.

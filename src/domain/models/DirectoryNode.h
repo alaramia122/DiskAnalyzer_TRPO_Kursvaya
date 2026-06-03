@@ -29,10 +29,15 @@ namespace domain {
         explicit DirectoryNode(std::filesystem::path p);
 
         /**
-         * @brief Добавляет дочерний узел (передаёт владение).
-         * @param child Уникальный указатель на дочерний узел
+         * @brief Создает дочерний каталог и добавляет его в дерево.
+         *
+         * Метод автоматически устанавливает связь родитель-потомок
+         * и возвращает указатель на созданный узел.
+         *
+         * @param path Путь к создаваемому каталогу.
+         * @return Указатель на созданный дочерний узел.
          */
-        void addChild(std::unique_ptr<DirectoryNode> child);
+        DirectoryNode* addChild(const std::filesystem::path& path);
 
         /**
          * @brief Находит дочерний узел по имени.
