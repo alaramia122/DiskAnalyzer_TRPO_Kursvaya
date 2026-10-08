@@ -76,3 +76,29 @@ if(WIN32)
     )
 
 endif()
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(AnalysisPipelineIntegrationTest
+        tests/AnalysisPipelineIntegrationTest.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+        src/application/AnalysisPipeline.cpp
+    )
+
+    target_include_directories(AnalysisPipelineIntegrationTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME AnalysisPipelineIntegrationTest
+        COMMAND AnalysisPipelineIntegrationTest
+    )
+endif()
