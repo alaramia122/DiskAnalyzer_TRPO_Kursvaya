@@ -3,6 +3,7 @@
 #include <QMetaObject>
 #include <QString>
 
+#include <exception>
 #include <system_error>
 #include <utility>
 
@@ -51,41 +52,79 @@ namespace application
                 },
                 Qt::QueuedConnection);
 
-            const domain::ScanStatus status = pipeline_.run(
-                rootPath,
-                result_,
-                cancellationRequested_,
-                [this](const domain::ScanProgress& progress)
-                {
-                    const QString path =
-                        QString::fromStdString(progress.currentPath.string());
+            domain::ScanStatus status = domain::ScanStatus::Failed;
 
-                    QMetaObject::invokeMethod(
-                        this,
-                        [this, path,
-                         files = static_cast<qulonglong>(progress.processedFiles),
-                         directories = static_cast<qulonglong>(
-                             progress.processedDirectories)]()
-                        {
-                            emit progressChanged(path, files, directories);
-                        },
-                        Qt::QueuedConnection);
-                },
-                [this](const domain::ScanError& error)
-                {
-                    const QString path =
-                        QString::fromStdString(error.path.string());
-                    const QString message =
-                        QString::fromStdString(error.message);
+            try
+            {
+                status = pipeline_.run(
+                    rootPath,
+                    result_,
+                    cancellationRequested_,
+                    [this](const domain::ScanProgress& progress)
+                    {
+                        const QString path =
+                            QString::fromUtf8(
+                                progress.currentPath.u8string().c_str());
 
-                    QMetaObject::invokeMethod(
-                        this,
-                        [this, path, message]()
-                        {
-                            emit scanError(path, message);
-                        },
-                        Qt::QueuedConnection);
-                });
+                        QMetaObject::invokeMethod(
+                            this,
+                            [this, path,
+                             files = static_cast<qulonglong>(
+                                 progress.processedFiles),
+                             directories = static_cast<qulonglong>(
+                                 progress.processedDirectories)]()
+                            {
+                                emit progressChanged(path, files, directories);
+                            },
+                            Qt::QueuedConnection);
+                    },
+                    [this](const domain::ScanError& error)
+                    {
+                        const QString path =
+                            QString::fromUtf8(error.path.u8string().c_str());
+                        const QString message =
+                            QString::fromStdString(error.message);
+
+                        QMetaObject::invokeMethod(
+                            this,
+                            [this, path, message]()
+                            {
+                                emit scanError(path, message);
+                            },
+                            Qt::QueuedConnection);
+                    });
+            }
+            catch (const std::exception& exception)
+            {
+                const QString message =
+                    QString::fromUtf8(exception.what());
+
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, rootPath, message]()
+                    {
+                        const QString path =
+                            QString::fromUtf8(rootPath.u8string().c_str());
+                        emit scanError(path, message);
+                    },
+                    Qt::QueuedConnection);
+
+                status = domain::ScanStatus::Failed;
+            }
+            catch (...)
+            {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this]()
+                    {
+                        emit scanError(
+                            QString(),
+                            QStringLiteral("Неизвестная ошибка анализа."));
+                    },
+                    Qt::QueuedConnection);
+
+                status = domain::ScanStatus::Failed;
+            }
 
             running_.store(false);
 
