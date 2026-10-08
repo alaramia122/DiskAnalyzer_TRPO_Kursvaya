@@ -27,9 +27,15 @@ namespace application
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
 
-        if (worker_.joinable() || running_.load())
+        if (running_.load())
         {
             return false;
+        }
+
+        // Завершившийся поток присоединяется перед повторным запуском.
+        if (worker_.joinable())
+        {
+            worker_.join();
         }
 
         cancellationRequested_.store(false);
