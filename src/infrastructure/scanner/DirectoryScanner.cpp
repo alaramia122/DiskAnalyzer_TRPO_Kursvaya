@@ -1,11 +1,21 @@
 #include "DirectoryScanner.h"
 
 #include <filesystem>
+#include <memory>
 #include <system_error>
 #include <vector>
 
 namespace infrastructure
 {
+    namespace
+    {
+        struct DirectoryFrame
+        {
+            std::filesystem::directory_iterator iterator;
+            domain::DirectoryNode* node = nullptr;
+        };
+    }
+
     DirectoryScanner::DirectoryScanner(
         const domain::IFileClassifier& classifier)
         : classifier_(classifier)
@@ -61,6 +71,32 @@ namespace infrastructure
 
         result.setRoot(std::move(rootNode));
 
+        std::error_code rootIteratorError;
+        std::filesystem::directory_iterator rootIterator(
+            rootPath,
+            std::filesystem::directory_options::none,
+            rootIteratorError);
+
+        if (rootIteratorError)
+        {
+            if (errorCallback)
+            {
+                errorCallback({
+                    rootPath,
+                    rootIteratorError,
+                    rootIteratorError.message()
+                });
+            }
+
+            return domain::ScanStatus::Failed;
+        }
+
+        std::vector<DirectoryFrame> stack;
+        stack.push_back({
+            std::move(rootIterator),
+            result.getRoot()
+        });
+
         std::uint64_t processedFiles = 0;
         std::uint64_t processedDirectories = 1;
         std::uint64_t processedObjectsSinceProgress = 0;
@@ -74,73 +110,64 @@ namespace infrastructure
             });
         }
 
-        std::error_code iteratorError;
-
-        std::filesystem::recursive_directory_iterator iterator(
-            rootPath,
-            std::filesystem::directory_options::none,
-            iteratorError);
-
-        if (iteratorError)
-        {
-            if (errorCallback)
-            {
-                errorCallback({
-                    rootPath,
-                    iteratorError,
-                    iteratorError.message()
-                });
-            }
-
-            return domain::ScanStatus::Failed;
-        }
-
-        std::vector<domain::DirectoryNode*> directoryStack;
-        directoryStack.push_back(result.getRoot());
-
-        while (iterator != std::filesystem::recursive_directory_iterator())
+        while (!stack.empty())
         {
             if (cancellationRequested.load())
             {
                 return domain::ScanStatus::Cancelled;
             }
 
-            const std::filesystem::directory_entry& entry = *iterator;
-            const std::size_t depth =
-                static_cast<std::size_t>(iterator.depth());
+            DirectoryFrame& frame = stack.back();
 
-            if (depth >= directoryStack.size())
+            if (frame.iterator == std::filesystem::directory_iterator())
             {
-                iterator.increment(iteratorError);
+                stack.pop_back();
                 continue;
             }
 
-            directoryStack.resize(depth + 1);
+            const std::filesystem::directory_entry entry = *frame.iterator;
 
-            std::error_code entryTypeError;
-            const std::filesystem::file_status entryLinkStatus =
-                entry.symlink_status(entryTypeError);
+            std::error_code incrementError;
+            frame.iterator.increment(incrementError);
 
-            if (entryTypeError)
+            if (incrementError)
+            {
+                if (errorCallback)
+                {
+                    errorCallback({
+                        frame.node->path,
+                        incrementError,
+                        incrementError.message()
+                    });
+                }
+
+                // Ошибка итератора делает дальнейший обход текущего
+                // каталога ненадежным. Закрываем только текущий frame;
+                // остальные уровни дерева продолжают обрабатываться.
+                frame.iterator =
+                    std::filesystem::directory_iterator();
+            }
+
+            std::error_code linkStatusError;
+            const std::filesystem::file_status linkStatus =
+                entry.symlink_status(linkStatusError);
+
+            if (linkStatusError)
             {
                 if (errorCallback)
                 {
                     errorCallback({
                         entry.path(),
-                        entryTypeError,
-                        entryTypeError.message()
+                        linkStatusError,
+                        linkStatusError.message()
                     });
                 }
 
-                iterator.increment(iteratorError);
                 continue;
             }
 
-            // Symbolic links не используются для рекурсивного обхода.
-            // Для определения типа целевого объекта отдельно запрашивается
-            // status(), а сам путь остаётся самостоятельным объектом анализа.
             std::error_code targetStatusError;
-            const std::filesystem::file_status entryStatus =
+            const std::filesystem::file_status targetStatus =
                 entry.status(targetStatusError);
 
             if (targetStatusError)
@@ -154,19 +181,51 @@ namespace infrastructure
                     });
                 }
 
-                iterator.increment(iteratorError);
                 continue;
             }
 
-            if (std::filesystem::is_directory(entryStatus))
+            const bool isSymlink =
+                std::filesystem::is_symlink(linkStatus);
+
+            if (std::filesystem::is_directory(targetStatus))
             {
                 domain::DirectoryNode* child =
-                    directoryStack[depth]->addChild(entry.path());
+                    frame.node->addChild(entry.path());
 
-                directoryStack.push_back(child);
                 ++processedDirectories;
+
+                // Для обычных директорий открываем отдельный iterator.
+                // Symbolic link на директорию только отображается как
+                // отдельный узел и не используется для рекурсивного обхода.
+                if (!isSymlink)
+                {
+                    std::error_code childIteratorError;
+                    std::filesystem::directory_iterator childIterator(
+                        entry.path(),
+                        std::filesystem::directory_options::none,
+                        childIteratorError);
+
+                    if (childIteratorError)
+                    {
+                        if (errorCallback)
+                        {
+                            errorCallback({
+                                entry.path(),
+                                childIteratorError,
+                                childIteratorError.message()
+                            });
+                        }
+                    }
+                    else
+                    {
+                        stack.push_back({
+                            std::move(childIterator),
+                            child
+                        });
+                    }
+                }
             }
-            else if (std::filesystem::is_regular_file(entryStatus))
+            else if (std::filesystem::is_regular_file(targetStatus))
             {
                 std::error_code fileSizeError;
                 const std::uintmax_t fileSize =
@@ -192,7 +251,7 @@ namespace infrastructure
                         domain::FileSystemObjectType::File;
                     fileInfo.category = classifier_.classify(fileInfo);
 
-                    directoryStack[depth]->stats.addFile(
+                    frame.node->stats.addFile(
                         fileInfo.category,
                         fileInfo.sizeBytes);
 
@@ -212,22 +271,6 @@ namespace infrastructure
                 });
 
                 processedObjectsSinceProgress = 0;
-            }
-
-            iterator.increment(iteratorError);
-
-            if (iteratorError)
-            {
-                if (errorCallback)
-                {
-                    errorCallback({
-                        entry.path(),
-                        iteratorError,
-                        iteratorError.message()
-                    });
-                }
-
-                iteratorError.clear();
             }
         }
 
