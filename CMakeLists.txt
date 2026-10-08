@@ -25,6 +25,7 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
 
     src/domain/interfaces/IFileClassifier.h
     src/domain/interfaces/IDirectoryScanner.h
+    src/domain/interfaces/IDirectoryAggregator.h
 
     src/domain/models/FileInfo.h
     src/domain/models/DirectoryStatistics.h
@@ -39,6 +40,9 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
 
     src/infrastructure/scanner/DirectoryScanner.h
     src/infrastructure/scanner/DirectoryScanner.cpp
+
+    src/infrastructure/aggregator/DirectoryAggregator.h
+    src/infrastructure/aggregator/DirectoryAggregator.cpp
 )
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
