@@ -23,12 +23,19 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/domain/enums/ExportFormat.h
     src/domain/enums/FileSystemObjectType.h
 
+    src/domain/interfaces/IFileClassifier.h
+
     src/domain/models/FileInfo.h
     src/domain/models/DirectoryStatistics.h
     src/domain/models/DirectoryStatistics.cpp
     src/domain/models/DirectoryNode.h
+    src/domain/models/DirectoryNode.cpp
     src/domain/models/AnalysisResult.h
- "src/domain/models/DirectoryNode.cpp" "src/domain/models/AnalysisResult.cpp")
+    src/domain/models/AnalysisResult.cpp
+
+    src/infrastructure/classifier/FileClassifier.h
+    src/infrastructure/classifier/FileClassifier.cpp
+)
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
     Qt5::Core
