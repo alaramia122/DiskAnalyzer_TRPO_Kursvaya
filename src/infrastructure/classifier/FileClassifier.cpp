@@ -105,7 +105,8 @@ namespace infrastructure
                 std::tolower(static_cast<unsigned char>(character)));
         }
 
-        const auto iterator = extensionMap_.find(extension);
+        const std::unordered_map<std::string, domain::FileCategory>::const_iterator iterator =
+            extensionMap_.find(extension);
 
         if (iterator != extensionMap_.end())
         {
