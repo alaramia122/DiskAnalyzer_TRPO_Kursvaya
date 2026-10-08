@@ -1,7 +1,7 @@
-#include "../application/AnalysisPipeline.h"
-#include "../infrastructure/aggregator/DirectoryAggregator.h"
-#include "../infrastructure/classifier/FileClassifier.h"
-#include "../infrastructure/scanner/DirectoryScanner.h"
+#include "application/AnalysisPipeline.h"
+#include "infrastructure/aggregator/DirectoryAggregator.h"
+#include "infrastructure/classifier/FileClassifier.h"
+#include "infrastructure/scanner/DirectoryScanner.h"
 
 #include <atomic>
 #include <filesystem>
