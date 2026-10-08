@@ -16,6 +16,8 @@ find_package(Qt5 REQUIRED COMPONENTS
 )
 
 add_executable(DiskAnalyzer_TRPO_Kursovaya
+    src/application/AnalysisPipeline.h
+    src/application/AnalysisPipeline.cpp
     src/main.cpp
 
     src/domain/enums/FileCategory.h
