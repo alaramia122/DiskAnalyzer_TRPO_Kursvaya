@@ -37,7 +37,8 @@ namespace infrastructure
             }
         }
 
-        for (auto iterator = traversalOrder.rbegin();
+        for (std::vector<domain::DirectoryNode*>::reverse_iterator iterator =
+                 traversalOrder.rbegin();
              iterator != traversalOrder.rend();
              ++iterator)
         {
