@@ -78,7 +78,7 @@ namespace infrastructure
 
         std::filesystem::recursive_directory_iterator iterator(
             rootPath,
-            std::filesystem::directory_options::skip_permission_denied,
+            std::filesystem::directory_options::none,
             iteratorError);
 
         if (iteratorError)
@@ -118,7 +118,7 @@ namespace infrastructure
             directoryStack.resize(depth + 1);
 
             std::error_code entryTypeError;
-            const std::filesystem::file_status entryStatus =
+            const std::filesystem::file_status entryLinkStatus =
                 entry.symlink_status(entryTypeError);
 
             if (entryTypeError)
@@ -129,6 +129,28 @@ namespace infrastructure
                         entry.path(),
                         entryTypeError,
                         entryTypeError.message()
+                    });
+                }
+
+                iterator.increment(iteratorError);
+                continue;
+            }
+
+            // Symbolic links не используются для рекурсивного обхода.
+            // Для определения типа целевого объекта отдельно запрашивается
+            // status(), а сам путь остаётся самостоятельным объектом анализа.
+            std::error_code targetStatusError;
+            const std::filesystem::file_status entryStatus =
+                entry.status(targetStatusError);
+
+            if (targetStatusError)
+            {
+                if (errorCallback)
+                {
+                    errorCallback({
+                        entry.path(),
+                        targetStatusError,
+                        targetStatusError.message()
                     });
                 }
 
