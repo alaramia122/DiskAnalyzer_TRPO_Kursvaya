@@ -72,6 +72,7 @@ namespace application
         domain::AnalysisResult result_;
         std::atomic_bool cancellationRequested_{false};
         std::atomic_bool running_{false};
+        std::atomic_bool completionPending_{false};
         std::thread worker_;
         mutable std::mutex lifecycleMutex_;
     };
