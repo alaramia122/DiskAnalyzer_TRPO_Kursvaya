@@ -21,6 +21,8 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/application/ApplicationController.h
     src/application/ApplicationController.cpp
     src/main.cpp
+    src/ui/MainWindow.h
+    src/ui/MainWindow.cpp
 
     src/domain/enums/FileCategory.h
     src/domain/enums/ScanStatus.h
