@@ -173,7 +173,8 @@ namespace ui
             return;
         }
 
-        const std::filesystem::path path(selectedPath.toStdString());
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        const std::filesystem::path path = std::filesystem::u8path(encodedPath.constData());
         if (!controller_.startAnalysis(path))
         {
             statusLabel_->setText(
@@ -267,7 +268,7 @@ namespace ui
 
         const QString path = pathToQString(node->path);
         const QString name = node->path.filename().empty()
-            ? path : QString::fromStdString(node->path.filename().string());
+            ? path : pathToQString(node->path.filename());
         auto* item = parentItem
             ? new QTreeWidgetItem(parentItem)
             : new QTreeWidgetItem(directoryTree_);
