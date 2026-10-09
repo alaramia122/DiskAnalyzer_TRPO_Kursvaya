@@ -8,7 +8,7 @@
 
 int main(int argc, char* argv[])
 {
-    QApplication application(argc, argv);
+    QApplication qtApp(argc, argv);
 
     infrastructure::FileClassifier classifier;
     infrastructure::DirectoryScanner scanner(classifier);
@@ -18,5 +18,5 @@ int main(int argc, char* argv[])
     ui::MainWindow window(controller);
 
     window.show();
-    return application.exec();
+    return qtApp.exec();
 }
