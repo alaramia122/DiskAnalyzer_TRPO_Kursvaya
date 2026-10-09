@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../application/ApplicationController.h"
+#include "../domain/enums/FileCategory.h"
+#include "../domain/models/DirectoryNode.h"
 
 #include <QMainWindow>
 #include <QString>
