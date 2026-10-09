@@ -28,7 +28,7 @@ namespace application
     {
         std::lock_guard<std::mutex> lock(lifecycleMutex_);
 
-        if (running_.load())
+        if (running_.load() || completionPending_.load())
         {
             return false;
         }
@@ -126,6 +126,7 @@ namespace application
                 status = domain::ScanStatus::Failed;
             }
 
+            completionPending_.store(true);
             running_.store(false);
 
             QMetaObject::invokeMethod(
@@ -133,6 +134,7 @@ namespace application
                 [this, status]()
                 {
                     emit analysisFinished(static_cast<int>(status));
+                    completionPending_.store(false);
                 },
                 Qt::QueuedConnection);
         });
