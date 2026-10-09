@@ -34,6 +34,15 @@ int main()
     fs::remove_all(testRoot, cleanupError);
 
     fs::create_directories(testRoot / "nested");
+    fs::create_directories(testRoot / "empty");
+
+    // Создание ссылок поддерживается не на всех окружениях/правах.
+    // Если ОС позволяет создать directory symlink, проверяем его политику.
+    const fs::path directorySymlink = testRoot / "nested-link";
+    std::error_code symlinkCreationError;
+    fs::create_directory_symlink(testRoot / "nested", directorySymlink,
+                                 symlinkCreationError);
+    const bool directorySymlinkCreated = !symlinkCreationError;
 
     {
         std::ofstream rootFile(testRoot / "root.txt", std::ios::binary);
@@ -90,6 +99,41 @@ int main()
         passed &= require(
             stats.getTotalCategoryCount(domain::FileCategory::SourceCode) == 1,
             "cpp file is classified as SourceCode");
+
+        const domain::DirectoryNode* emptyDirectory =
+            result.findNode(testRoot / "empty");
+        passed &= require(
+            emptyDirectory != nullptr,
+            "empty directory is present in the result tree");
+        if (emptyDirectory)
+        {
+            passed &= require(
+                emptyDirectory->stats.direct.filesCount == 0 &&
+                emptyDirectory->stats.subtree.filesCount == 0,
+                "empty directory has zero direct and subtree file counts");
+            passed &= require(
+                emptyDirectory->children.empty(),
+                "empty directory has no child directories");
+        }
+
+        if (directorySymlinkCreated)
+        {
+            const domain::DirectoryNode* linkNode =
+                result.findNode(directorySymlink);
+            passed &= require(
+                linkNode != nullptr,
+                "directory symlink is represented as a directory node");
+            if (linkNode)
+            {
+                passed &= require(
+                    linkNode->children.empty(),
+                    "directory symlink is not recursively traversed");
+                passed &= require(
+                    linkNode->stats.direct.filesCount == 0 &&
+                    linkNode->stats.subtree.filesCount == 0,
+                    "directory symlink target files are not counted twice");
+            }
+        }
     }
 
     // Повторная агрегация не должна повторно прибавлять subtree-статистику.
