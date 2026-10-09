@@ -92,6 +92,21 @@ int main()
             "cpp file is classified as SourceCode");
     }
 
+    // Повторная агрегация не должна повторно прибавлять subtree-статистику.
+    passed &= require(
+        aggregator.aggregate(result),
+        "aggregator accepts a populated result on repeated call");
+
+    if (result.getRoot())
+    {
+        passed &= require(
+            result.getRoot()->stats.subtree.filesCount == 1,
+            "repeated aggregation does not duplicate subtree file count");
+        passed &= require(
+            result.getRoot()->stats.subtree.filesSizeBytes == 5,
+            "repeated aggregation does not duplicate subtree file size");
+    }
+
     domain::AnalysisResult cancelledResult;
     std::atomic_bool alreadyCancelled(true);
     const domain::ScanStatus cancelledStatus = pipeline.run(
@@ -102,6 +117,17 @@ int main()
     passed &= require(
         cancelledStatus == domain::ScanStatus::Cancelled,
         "pipeline returns Cancelled when cancellation is requested");
+
+    domain::AnalysisResult missingResult;
+    std::atomic_bool notCancelled(false);
+    const domain::ScanStatus missingPathStatus = pipeline.run(
+        testRoot / "does-not-exist",
+        missingResult,
+        notCancelled);
+
+    passed &= require(
+        missingPathStatus == domain::ScanStatus::Failed,
+        "pipeline fails for a nonexistent root path");
 
     fs::remove_all(testRoot, cleanupError);
 
