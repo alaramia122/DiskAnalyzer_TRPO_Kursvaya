@@ -2,6 +2,7 @@
 
 #include "../domain/enums/ScanStatus.h"
 #include "../domain/models/DirectoryNode.h"
+#include "../domain/enums/ExportFormat.h"
 
 #include <QFileDialog>
 #include <QHeaderView>
@@ -70,6 +71,16 @@ namespace ui
         pathLayout->addWidget(cancelButton_);
         mainLayout->addLayout(pathLayout);
 
+        auto* exportLayout = new QHBoxLayout();
+        exportJsonButton_ = new QPushButton(QStringLiteral("Экспорт JSON…"), central);
+        exportTxtButton_ = new QPushButton(QStringLiteral("Экспорт TXT…"), central);
+        exportJsonButton_->setEnabled(false);
+        exportTxtButton_->setEnabled(false);
+        exportLayout->addWidget(exportJsonButton_);
+        exportLayout->addWidget(exportTxtButton_);
+        exportLayout->addStretch(1);
+        mainLayout->addLayout(exportLayout);
+
         statusLabel_ = new QLabel(QStringLiteral("Готов к анализу."), central);
         currentPathLabel_ = new QLabel(central);
         currentPathLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -129,6 +140,10 @@ namespace ui
                 this, &MainWindow::startAnalysis);
         connect(cancelButton_, &QPushButton::clicked,
                 this, &MainWindow::cancelAnalysis);
+        connect(exportJsonButton_, &QPushButton::clicked,
+                this, &MainWindow::exportJson);
+        connect(exportTxtButton_, &QPushButton::clicked,
+                this, &MainWindow::exportTxt);
         connect(directoryTree_, &QTreeWidget::currentItemChanged,
                 this, &MainWindow::showSelectedDirectory);
 
@@ -139,6 +154,8 @@ namespace ui
                     errorsLog_->clear();
                     directoryTree_->clear();
                     statisticsTable_->setRowCount(0);
+                    exportJsonButton_->setEnabled(false);
+                    exportTxtButton_->setEnabled(false);
                 });
         connect(&controller_, &application::ApplicationController::progressChanged,
                 this, &MainWindow::handleProgress);
@@ -194,6 +211,62 @@ namespace ui
         statusLabel_->setText(QStringLiteral("Запрошена отмена анализа…"));
     }
 
+    void MainWindow::exportJson()
+    {
+        const QString selected = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Экспорт результатов в JSON"),
+            QStringLiteral("analysis-result.json"),
+            QStringLiteral("JSON (*.json)"));
+        if (selected.isEmpty())
+        {
+            return;
+        }
+
+        const QByteArray encodedPath = selected.toUtf8();
+        const std::filesystem::path outputPath =
+            std::filesystem::u8path(encodedPath.constData());
+        std::string errorMessage;
+        if (!exportManager_.exportResult(
+                controller_.result(), outputPath,
+                domain::ExportFormat::Json, &errorMessage))
+        {
+            QMessageBox::warning(
+                this, QStringLiteral("Ошибка экспорта"),
+                QString::fromUtf8(errorMessage.c_str()));
+            return;
+        }
+
+        statusLabel_->setText(QStringLiteral("Результаты экспортированы в JSON."));
+    }
+
+    void MainWindow::exportTxt()
+    {
+        const QString selected = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Экспорт результатов в TXT"),
+            QStringLiteral("analysis-result.txt"),
+            QStringLiteral("Текстовые файлы (*.txt)"));
+        if (selected.isEmpty())
+        {
+            return;
+        }
+
+        const QByteArray encodedPath = selected.toUtf8();
+        const std::filesystem::path outputPath =
+            std::filesystem::u8path(encodedPath.constData());
+        std::string errorMessage;
+        if (!exportManager_.exportResult(
+                controller_.result(), outputPath,
+                domain::ExportFormat::Txt, &errorMessage))
+        {
+            QMessageBox::warning(
+                this, QStringLiteral("Ошибка экспорта"),
+                QString::fromUtf8(errorMessage.c_str()));
+            return;
+        }
+
+        statusLabel_->setText(QStringLiteral("Результаты экспортированы в TXT."));
+    }
+
     void MainWindow::handleProgress(
         const QString& path,
         qulonglong processedFiles,
@@ -238,6 +311,9 @@ namespace ui
         runButton_->setEnabled(!busy);
         cancelButton_->setEnabled(busy);
         progressBar_->setVisible(busy);
+        const bool hasResult = controller_.result().getRoot() != nullptr;
+        exportJsonButton_->setEnabled(!busy && hasResult);
+        exportTxtButton_->setEnabled(!busy && hasResult);
     }
 
     void MainWindow::populateTree()
