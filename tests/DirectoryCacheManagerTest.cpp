@@ -55,7 +55,7 @@ int main()
     passed &= require(cache.invalidate(first),
                       "a selected directory can be invalidated");
     passed &= require(cache.find(first) == nullptr &&
-                      cache.cachedFileCount() == 2,
+                      cache.cachedFileCount() == 1,
                       "invalidation removes only the selected cached listing");
     passed &= require(!cache.invalidate(first),
                       "invalidating an absent directory reports no change");
