@@ -109,8 +109,15 @@ namespace ui
         directoryTree_->setHeaderLabels({QStringLiteral("Каталоги")});
         directoryTree_->setMinimumWidth(280);
         leftLayout->addWidget(directoryTree_, 2);
-        leftLayout->addWidget(new QLabel(
+        auto* contentsHeader = new QHBoxLayout();
+        contentsHeader->addWidget(new QLabel(
             QStringLiteral("Содержимое выбранного каталога"), leftPanel));
+        refreshDirectoryButton_ = new QPushButton(
+            QStringLiteral("Обновить"), leftPanel);
+        refreshDirectoryButton_->setToolTip(
+            QStringLiteral("Повторно прочитать только выбранный каталог"));
+        contentsHeader->addWidget(refreshDirectoryButton_);
+        leftLayout->addLayout(contentsHeader);
         filesTable_ = new QTableWidget(0, 4, leftPanel);
         filesTable_->setHorizontalHeaderLabels({
             QStringLiteral("Имя"), QStringLiteral("Тип"),
@@ -189,6 +196,8 @@ namespace ui
                 this, &MainWindow::exportTxt);
         connect(directoryTree_, &QTreeWidget::currentItemChanged,
                 this, &MainWindow::showSelectedDirectory);
+        connect(refreshDirectoryButton_, &QPushButton::clicked,
+                this, &MainWindow::refreshDirectoryContents);
         connect(chartScopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int)
                 {
@@ -446,6 +455,21 @@ namespace ui
     void MainWindow::clearDirectoryCache()
     {
         directoryCache_.clear();
+    }
+
+    void MainWindow::refreshDirectoryContents()
+    {
+        auto* item = directoryTree_->currentItem();
+        if (!item)
+        {
+            return;
+        }
+
+        const QString selectedPath = item->data(0, PathRole).toString();
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        const auto directory = std::filesystem::u8path(encodedPath.constData());
+        directoryCache_.invalidate(directory);
+        showDirectoryContents(directory);
     }
 
     void MainWindow::showDirectoryContents(const std::filesystem::path& directory)
