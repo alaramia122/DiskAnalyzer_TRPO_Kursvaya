@@ -17,8 +17,7 @@ namespace infrastructure
         DirectoryReadResult result;
         std::error_code error;
         std::filesystem::directory_iterator iterator(
-            directory, std::filesystem::directory_options::skip_permission_denied,
-            error);
+            directory, std::filesystem::directory_options::none, error);
         const std::filesystem::directory_iterator end;
 
         if (error)
