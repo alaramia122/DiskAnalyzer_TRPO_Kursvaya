@@ -54,7 +54,7 @@ namespace infrastructure
     }
 
     bool DirectoryCacheManager::invalidate(
-        const std::filesystem::path& directory) noexcept
+        const std::filesystem::path& directory)
     {
         const auto found = entries_.find(directory);
         if (found == entries_.end())
