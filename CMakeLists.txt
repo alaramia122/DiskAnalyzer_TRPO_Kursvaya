@@ -130,4 +130,33 @@ if(BUILD_TESTING)
         NAME ExportManagerTest
         COMMAND ExportManagerTest
     )
+
+    add_executable(ApplicationControllerTest
+        tests/ApplicationControllerTest.cpp
+
+        src/application/ApplicationController.h
+        src/application/ApplicationController.cpp
+        src/application/AnalysisPipeline.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+    )
+
+    target_include_directories(ApplicationControllerTest PRIVATE
+        src
+    )
+
+    target_link_libraries(ApplicationControllerTest PRIVATE
+        Qt5::Core
+    )
+
+    add_test(
+        NAME ApplicationControllerTest
+        COMMAND ApplicationControllerTest
+    )
 endif()
