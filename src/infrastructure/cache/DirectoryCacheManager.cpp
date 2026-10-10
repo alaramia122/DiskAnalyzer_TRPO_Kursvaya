@@ -53,6 +53,21 @@ namespace infrastructure
         return &found->second.files;
     }
 
+    bool DirectoryCacheManager::invalidate(
+        const std::filesystem::path& directory) noexcept
+    {
+        const auto found = entries_.find(directory);
+        if (found == entries_.end())
+        {
+            return false;
+        }
+
+        cachedFileCount_ -= found->second.files.size();
+        lru_.erase(found->second.lruPosition);
+        entries_.erase(found);
+        return true;
+    }
+
     void DirectoryCacheManager::setCurrentDirectory(
         const std::filesystem::path& directory)
     {
