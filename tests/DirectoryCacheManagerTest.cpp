@@ -52,6 +52,14 @@ int main()
     passed &= require(cache.find(second) == nullptr,
                       "least recently used directory is evicted");
 
+    passed &= require(cache.invalidate(first),
+                      "a selected directory can be invalidated");
+    passed &= require(cache.find(first) == nullptr &&
+                      cache.cachedFileCount() == 2,
+                      "invalidation removes only the selected cached listing");
+    passed &= require(!cache.invalidate(first),
+                      "invalidating an absent directory reports no change");
+
     cache.setCurrentDirectory(third);
     passed &= require(cache.currentDirectory() == third,
                       "current directory is tracked independently");
