@@ -225,6 +225,15 @@ namespace ui
             return;
         }
 
+        // Убираем элементы дерева до обработки нового результата:
+        // они содержат указатели на узлы предыдущего AnalysisResult,
+        // который сканер сбрасывает в рабочем потоке.
+        directoryTree_->clear();
+        statisticsTable_->setRowCount(0);
+        updateChart(nullptr);
+        exportJsonButton_->setEnabled(false);
+        exportTxtButton_->setEnabled(false);
+
         setBusy(true);
         statusLabel_->setText(QStringLiteral("Подготовка к анализу…"));
         currentPathLabel_->clear();
@@ -337,9 +346,11 @@ namespace ui
         runButton_->setEnabled(!busy);
         cancelButton_->setEnabled(busy);
         progressBar_->setVisible(busy);
-        const bool hasResult = controller_.result().getRoot() != nullptr;
-        exportJsonButton_->setEnabled(!busy && hasResult);
-        exportTxtButton_->setEnabled(!busy && hasResult);
+        // Пока рабочий поток выполняет анализ, result() изменяется сканером.
+        // Не читаем его из GUI до получения analysisFinished.
+        const bool hasResult = !busy && controller_.result().getRoot() != nullptr;
+        exportJsonButton_->setEnabled(hasResult);
+        exportTxtButton_->setEnabled(hasResult);
     }
 
     void MainWindow::populateTree()
