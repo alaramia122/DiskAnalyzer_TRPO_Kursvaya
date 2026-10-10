@@ -3,6 +3,7 @@
 #include "../application/ApplicationController.h"
 #include "../domain/enums/FileCategory.h"
 #include "../domain/models/DirectoryNode.h"
+#include "../infrastructure/export/ExportManager.h"
 
 #include <QMainWindow>
 #include <QString>
@@ -32,6 +33,8 @@ namespace ui
         void chooseRootDirectory();
         void startAnalysis();
         void cancelAnalysis();
+        void exportJson();
+        void exportTxt();
         void handleProgress(
             const QString& path,
             qulonglong processedFiles,
@@ -51,10 +54,13 @@ namespace ui
         static QString pathToQString(const std::filesystem::path& path);
 
         application::ApplicationController& controller_;
+        infrastructure::ExportManager exportManager_;
         QLineEdit* rootPathEdit_ = nullptr;
         QPushButton* browseButton_ = nullptr;
         QPushButton* runButton_ = nullptr;
         QPushButton* cancelButton_ = nullptr;
+        QPushButton* exportJsonButton_ = nullptr;
+        QPushButton* exportTxtButton_ = nullptr;
         QProgressBar* progressBar_ = nullptr;
         QLabel* statusLabel_ = nullptr;
         QLabel* currentPathLabel_ = nullptr;
