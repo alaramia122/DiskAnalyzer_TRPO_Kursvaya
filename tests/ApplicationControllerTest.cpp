@@ -18,7 +18,7 @@ namespace
     {
         if (!condition)
         {
-            std::cerr << "FAILED: " << message << '\\n';
+            std::cerr << "FAILED: " << message << '\n';
             return false;
         }
         return true;
@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
 
     QObject::connect(&timeout, &QTimer::timeout, &eventLoop, [&eventLoop]()
     {
-        std::cerr << "FAILED: controller test timed out.\\n";
+        std::cerr << "FAILED: controller test timed out.\n";
         eventLoop.quit();
     });
 
@@ -117,6 +117,6 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::cout << "All controller checks passed.\\n";
+    std::cout << "All controller checks passed.\n";
     return 0;
 }
