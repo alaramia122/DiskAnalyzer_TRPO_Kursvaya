@@ -51,6 +51,8 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/infrastructure/aggregator/DirectoryAggregator.cpp
     src/infrastructure/cache/DirectoryCacheManager.h
     src/infrastructure/cache/DirectoryCacheManager.cpp
+    src/infrastructure/reader/DirectoryContentsReader.h
+    src/infrastructure/reader/DirectoryContentsReader.cpp
     src/infrastructure/export/ExportManager.h
     src/infrastructure/export/ExportManager.cpp
     src/visualization/models/VisualizationModel.h
