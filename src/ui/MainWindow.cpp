@@ -428,6 +428,7 @@ namespace ui
         if (!item)
         {
             statisticsTable_->setRowCount(0);
+            filesTable_->setRowCount(0);
             updateChart(nullptr);
             return;
         }
@@ -479,6 +480,7 @@ namespace ui
 
                 std::error_code statusError;
                 const auto status = entry.symlink_status(statusError);
+                const bool validStatus = !statusError;
                 if (statusError)
                 {
                     errorsLog_->appendPlainText(
@@ -501,6 +503,7 @@ namespace ui
                         errorsLog_->appendPlainText(
                             pathToQString(info.path) + QStringLiteral(": ") +
                             QString::fromLocal8Bit(statusError.message().c_str()));
+                        statusError.clear();
                     }
                 }
                 else
@@ -511,7 +514,7 @@ namespace ui
                     info.category = domain::FileCategory::Other;
                 }
 
-                if (!statusError)
+                if (validStatus)
                 {
                     entries.push_back(std::move(info));
                 }
