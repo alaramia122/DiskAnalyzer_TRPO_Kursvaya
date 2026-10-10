@@ -4,6 +4,7 @@
 #include "../domain/models/DirectoryNode.h"
 #include "../domain/enums/ExportFormat.h"
 #include "../domain/enums/FileSystemObjectType.h"
+#include "../infrastructure/reader/DirectoryContentsReader.h"
 
 #include <QFileDialog>
 #include <QHeaderView>
