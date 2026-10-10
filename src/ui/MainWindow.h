@@ -46,6 +46,7 @@ namespace ui
             qulonglong processedDirectories);
         void handleAnalysisFinished(int status);
         void showSelectedDirectory(QTreeWidgetItem* item);
+        void refreshDirectoryContents();
 
     private:
         void setBusy(bool busy);
@@ -70,6 +71,7 @@ namespace ui
         QPushButton* browseButton_ = nullptr;
         QPushButton* runButton_ = nullptr;
         QPushButton* cancelButton_ = nullptr;
+        QPushButton* refreshDirectoryButton_ = nullptr;
         QPushButton* exportJsonButton_ = nullptr;
         QPushButton* exportTxtButton_ = nullptr;
         QProgressBar* progressBar_ = nullptr;
