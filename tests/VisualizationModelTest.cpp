@@ -9,7 +9,7 @@ namespace
     {
         if (!condition)
         {
-            std::cerr << "FAILED: " << message << '\\n';
+            std::cerr << "FAILED: " << message << '\n';
             return false;
         }
         return true;
@@ -60,6 +60,6 @@ int main()
         return 1;
     }
 
-    std::cout << "All visualization model checks passed.\\n";
+    std::cout << "All visualization model checks passed.\n";
     return 0;
 }
