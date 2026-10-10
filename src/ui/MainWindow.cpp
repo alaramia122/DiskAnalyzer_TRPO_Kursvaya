@@ -437,6 +437,125 @@ namespace ui
             static_cast<quintptr>(address));
         showStatistics(node);
         updateChart(node);
+        const QString selectedPath = item->data(0, PathRole).toString();
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        showDirectoryContents(std::filesystem::u8path(encodedPath.constData()));
+    }
+
+    void MainWindow::clearDirectoryCache()
+    {
+        directoryCache_.clear();
+    }
+
+    void MainWindow::showDirectoryContents(const std::filesystem::path& directory)
+    {
+        filesTable_->setRowCount(0);
+        directoryCache_.setCurrentDirectory(directory);
+
+        const infrastructure::DirectoryCacheManager::FileList* cached =
+            directoryCache_.find(directory);
+        if (!cached)
+        {
+            infrastructure::DirectoryCacheManager::FileList entries;
+            std::error_code error;
+            std::filesystem::directory_iterator iterator(
+                directory, std::filesystem::directory_options::skip_permission_denied,
+                error);
+            const std::filesystem::directory_iterator end;
+
+            if (error)
+            {
+                errorsLog_->appendPlainText(
+                    pathToQString(directory) + QStringLiteral(": ") +
+                    QString::fromLocal8Bit(error.message().c_str()));
+                return;
+            }
+
+            while (iterator != end)
+            {
+                const std::filesystem::directory_entry entry = *iterator;
+                domain::FileInfo info;
+                info.path = entry.path();
+
+                std::error_code statusError;
+                const auto status = entry.symlink_status(statusError);
+                if (statusError)
+                {
+                    errorsLog_->appendPlainText(
+                        pathToQString(info.path) + QStringLiteral(": ") +
+                        QString::fromLocal8Bit(statusError.message().c_str()));
+                }
+                else if (std::filesystem::is_directory(status))
+                {
+                    info.type = domain::FileSystemObjectType::Directory;
+                    info.category = domain::FileCategory::Other;
+                }
+                else if (std::filesystem::is_regular_file(status))
+                {
+                    info.type = domain::FileSystemObjectType::File;
+                    info.category = fileClassifier_.classify(info);
+                    info.sizeBytes = entry.file_size(statusError);
+                    if (statusError)
+                    {
+                        info.sizeBytes = 0;
+                        errorsLog_->appendPlainText(
+                            pathToQString(info.path) + QStringLiteral(": ") +
+                            QString::fromLocal8Bit(statusError.message().c_str()));
+                    }
+                }
+                else
+                {
+                    // Символические ссылки и специальные объекты отображаются,
+                    // но не обходятся рекурсивно.
+                    info.type = domain::FileSystemObjectType::File;
+                    info.category = domain::FileCategory::Other;
+                }
+
+                if (!statusError)
+                {
+                    entries.push_back(std::move(info));
+                }
+
+                iterator.increment(error);
+                if (error)
+                {
+                    errorsLog_->appendPlainText(
+                        pathToQString(directory) + QStringLiteral(": ") +
+                        QString::fromLocal8Bit(error.message().c_str()));
+                    break;
+                }
+            }
+
+            directoryCache_.store(directory, std::move(entries));
+            cached = directoryCache_.find(directory);
+        }
+
+        if (!cached)
+        {
+            return;
+        }
+
+        for (const auto& info : *cached)
+        {
+            const int row = filesTable_->rowCount();
+            filesTable_->insertRow(row);
+            const QString name = pathToQString(info.path.filename());
+            const QString type = info.type == domain::FileSystemObjectType::Directory
+                ? QStringLiteral("Каталог") : QStringLiteral("Файл");
+            const QStringList values = {
+                name, type,
+                info.type == domain::FileSystemObjectType::Directory
+                    ? QStringLiteral("—") : formatBytes(info.sizeBytes),
+                info.type == domain::FileSystemObjectType::Directory
+                    ? QStringLiteral("—") : categoryName(info.category)
+            };
+            for (int column = 0; column < values.size(); ++column)
+            {
+                auto* cell = new QTableWidgetItem(values[column]);
+                cell->setToolTip(pathToQString(info.path));
+                filesTable_->setItem(row, column, cell);
+            }
+        }
     }
 
     void MainWindow::showStatistics(const domain::DirectoryNode* node)
