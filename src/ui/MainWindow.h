@@ -4,6 +4,8 @@
 #include "../domain/enums/FileCategory.h"
 #include "../domain/models/DirectoryNode.h"
 #include "../infrastructure/export/ExportManager.h"
+#include "../infrastructure/cache/DirectoryCacheManager.h"
+#include "../infrastructure/classifier/FileClassifier.h"
 #include "../visualization/models/VisualizationModel.h"
 
 #include <QMainWindow>
@@ -52,6 +54,8 @@ namespace ui
             QTreeWidgetItem* parentItem,
             const domain::DirectoryNode* node);
         void showStatistics(const domain::DirectoryNode* node);
+        void showDirectoryContents(const std::filesystem::path& directory);
+        void clearDirectoryCache();
         void updateChart(const domain::DirectoryNode* node);
         static QString formatBytes(quint64 bytes);
         static QString categoryName(domain::FileCategory category);
@@ -60,6 +64,8 @@ namespace ui
         application::ApplicationController& controller_;
         infrastructure::ExportManager exportManager_;
         visualization::VisualizationModel visualizationModel_;
+        infrastructure::DirectoryCacheManager directoryCache_;
+        infrastructure::FileClassifier fileClassifier_;
         QLineEdit* rootPathEdit_ = nullptr;
         QPushButton* browseButton_ = nullptr;
         QPushButton* runButton_ = nullptr;
@@ -70,6 +76,7 @@ namespace ui
         QLabel* statusLabel_ = nullptr;
         QLabel* currentPathLabel_ = nullptr;
         QTreeWidget* directoryTree_ = nullptr;
+        QTableWidget* filesTable_ = nullptr;
         QTableWidget* statisticsTable_ = nullptr;
         QComboBox* chartScopeCombo_ = nullptr;
         QtCharts::QChartView* chartView_ = nullptr;
