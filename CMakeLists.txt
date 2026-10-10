@@ -195,4 +195,19 @@ if(BUILD_TESTING)
         NAME DirectoryCacheManagerTest
         COMMAND DirectoryCacheManagerTest
     )
+
+    add_executable(DirectoryContentsReaderTest
+        tests/DirectoryContentsReaderTest.cpp
+        src/infrastructure/reader/DirectoryContentsReader.cpp
+        src/infrastructure/classifier/FileClassifier.cpp
+    )
+
+    target_include_directories(DirectoryContentsReaderTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME DirectoryContentsReaderTest
+        COMMAND DirectoryContentsReaderTest
+    )
 endif()
