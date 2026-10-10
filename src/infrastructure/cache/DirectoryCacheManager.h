@@ -40,7 +40,7 @@ namespace infrastructure
         const FileList* find(const std::filesystem::path& directory);
 
         /** Удаляет один каталог из кэша, сохраняя остальные записи. */
-        bool invalidate(const std::filesystem::path& directory) noexcept;
+        bool invalidate(const std::filesystem::path& directory);
 
         /** Устанавливает текущий каталог и сохраняет его в кэше при наличии. */
         void setCurrentDirectory(const std::filesystem::path& directory);
