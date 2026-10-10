@@ -6,6 +6,12 @@
 
 #include <QFileDialog>
 #include <QHeaderView>
+#include <QComboBox>
+#include <QPainter>
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QPieSeries>
+#include <QtCharts/QPieSlice>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -118,6 +124,21 @@ namespace ui
         statisticsTable_->setSelectionMode(QAbstractItemView::NoSelection);
         rightLayout->addWidget(statisticsTable_, 1);
 
+        auto* chartHeader = new QHBoxLayout();
+        chartHeader->addWidget(new QLabel(
+            QStringLiteral("Распределение файлов по категориям"), rightPanel));
+        chartScopeCombo_ = new QComboBox(rightPanel);
+        chartScopeCombo_->addItem(QStringLiteral("Только здесь"));
+        chartScopeCombo_->addItem(QStringLiteral("Вложенные каталоги"));
+        chartScopeCombo_->addItem(QStringLiteral("Весь каталог"));
+        chartHeader->addWidget(chartScopeCombo_);
+        rightLayout->addLayout(chartHeader);
+
+        chartView_ = new QtCharts::QChartView(new QtCharts::QChart(), rightPanel);
+        chartView_->setRenderHint(QPainter::Antialiasing);
+        chartView_->setMinimumHeight(220);
+        rightLayout->addWidget(chartView_);
+
         rightLayout->addWidget(new QLabel(
             QStringLiteral("Ошибки доступа к файловой системе"), rightPanel));
         errorsLog_ = new QPlainTextEdit(rightPanel);
@@ -146,6 +167,11 @@ namespace ui
                 this, &MainWindow::exportTxt);
         connect(directoryTree_, &QTreeWidget::currentItemChanged,
                 this, &MainWindow::showSelectedDirectory);
+        connect(chartScopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int)
+                {
+                    showSelectedDirectory(directoryTree_->currentItem());
+                });
 
         connect(&controller_, &application::ApplicationController::analysisStarted,
                 this, [this]()
@@ -365,6 +391,7 @@ namespace ui
         if (!item)
         {
             statisticsTable_->setRowCount(0);
+            updateChart(nullptr);
             return;
         }
 
@@ -372,6 +399,7 @@ namespace ui
         const auto* node = reinterpret_cast<const domain::DirectoryNode*>(
             static_cast<quintptr>(address));
         showStatistics(node);
+        updateChart(node);
     }
 
     void MainWindow::showStatistics(const domain::DirectoryNode* node)
@@ -424,6 +452,56 @@ namespace ui
             item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
             statisticsTable_->setItem(totalRow, column, item);
         }
+    }
+
+    void MainWindow::updateChart(const domain::DirectoryNode* node)
+    {
+        auto* chart = new QtCharts::QChart();
+        chart->setTitle(QStringLiteral("Количество файлов по категориям"));
+        chart->legend()->setAlignment(Qt::AlignRight);
+
+        if (node)
+        {
+            const auto scope = static_cast<visualization::StatisticsScope>(
+                chartScopeCombo_->currentIndex());
+            const auto values = visualizationModel_.buildCategoryValues(
+                node->stats, scope);
+            auto* series = new QtCharts::QPieSeries();
+            for (const auto& value : values)
+            {
+                if (value.filesCount == 0)
+                {
+                    continue;
+                }
+
+                QtCharts::QPieSlice* slice = series->append(
+                    categoryName(value.category),
+                    static_cast<qreal>(value.filesCount));
+                slice->setLabel(
+                    QStringLiteral("%1: %2")
+                        .arg(categoryName(value.category))
+                        .arg(static_cast<qulonglong>(value.filesCount)));
+                slice->setLabelVisible(true);
+            }
+
+            if (series->count() > 0)
+            {
+                chart->addSeries(series);
+            }
+            else
+            {
+                delete series;
+                chart->setTitle(QStringLiteral("В выбранной области нет файлов"));
+            }
+        }
+        else
+        {
+            chart->setTitle(QStringLiteral("Выберите каталог для диаграммы"));
+        }
+
+        QtCharts::QChart* previousChart = chartView_->chart();
+        chartView_->setChart(chart);
+        delete previousChart;
     }
 
     QString MainWindow::formatBytes(quint64 bytes)
