@@ -3,6 +3,7 @@
 #include "../domain/enums/ScanStatus.h"
 #include "../domain/models/DirectoryNode.h"
 #include "../domain/enums/ExportFormat.h"
+#include "../domain/enums/FileSystemObjectType.h"
 
 #include <QFileDialog>
 #include <QHeaderView>
@@ -21,6 +22,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QTableWidget>
+#include <QAbstractItemView>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -28,6 +30,8 @@
 
 #include <array>
 #include <cstdint>
+#include <system_error>
+#include <utility>
 
 namespace ui
 {
@@ -98,9 +102,27 @@ namespace ui
         mainLayout->addWidget(progressBar_);
 
         auto* splitter = new QSplitter(Qt::Horizontal, central);
-        directoryTree_ = new QTreeWidget(splitter);
+        auto* leftPanel = new QWidget(splitter);
+        auto* leftLayout = new QVBoxLayout(leftPanel);
+        leftLayout->setContentsMargins(0, 0, 0, 0);
+        directoryTree_ = new QTreeWidget(leftPanel);
         directoryTree_->setHeaderLabels({QStringLiteral("Каталоги")});
         directoryTree_->setMinimumWidth(280);
+        leftLayout->addWidget(directoryTree_, 2);
+        leftLayout->addWidget(new QLabel(
+            QStringLiteral("Содержимое выбранного каталога"), leftPanel));
+        filesTable_ = new QTableWidget(0, 4, leftPanel);
+        filesTable_->setHorizontalHeaderLabels({
+            QStringLiteral("Имя"), QStringLiteral("Тип"),
+            QStringLiteral("Размер"), QStringLiteral("Категория")
+        });
+        filesTable_->horizontalHeader()->setSectionResizeMode(
+            QHeaderView::ResizeToContents);
+        filesTable_->horizontalHeader()->setStretchLastSection(true);
+        filesTable_->verticalHeader()->setVisible(false);
+        filesTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        filesTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+        leftLayout->addWidget(filesTable_, 1);
 
         auto* rightPanel = new QWidget(splitter);
         auto* rightLayout = new QVBoxLayout(rightPanel);
@@ -148,7 +170,7 @@ namespace ui
             QStringLiteral("Ошибки чтения каталогов и файлов появятся здесь."));
         rightLayout->addWidget(errorsLog_, 1);
 
-        splitter->addWidget(directoryTree_);
+        splitter->addWidget(leftPanel);
         splitter->addWidget(rightPanel);
         splitter->setStretchFactor(0, 1);
         splitter->setStretchFactor(1, 2);
@@ -178,6 +200,8 @@ namespace ui
                 {
                     statusLabel_->setText(QStringLiteral("Анализ выполняется…"));
                     errorsLog_->clear();
+                    clearDirectoryCache();
+                    filesTable_->setRowCount(0);
                     directoryTree_->clear();
                     statisticsTable_->setRowCount(0);
                     exportJsonButton_->setEnabled(false);
@@ -228,6 +252,8 @@ namespace ui
         // Убираем элементы дерева до обработки нового результата:
         // они содержат указатели на узлы предыдущего AnalysisResult,
         // который сканер сбрасывает в рабочем потоке.
+        clearDirectoryCache();
+        filesTable_->setRowCount(0);
         directoryTree_->clear();
         statisticsTable_->setRowCount(0);
         updateChart(nullptr);
