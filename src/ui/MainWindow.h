@@ -4,6 +4,7 @@
 #include "../domain/enums/FileCategory.h"
 #include "../domain/models/DirectoryNode.h"
 #include "../infrastructure/export/ExportManager.h"
+#include "../visualization/models/VisualizationModel.h"
 
 #include <QMainWindow>
 #include <QString>
@@ -17,6 +18,8 @@ class QPlainTextEdit;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QTableWidget;
+class QComboBox;
+namespace QtCharts { class QChartView; }
 
 namespace ui
 {
@@ -49,12 +52,14 @@ namespace ui
             QTreeWidgetItem* parentItem,
             const domain::DirectoryNode* node);
         void showStatistics(const domain::DirectoryNode* node);
+        void updateChart(const domain::DirectoryNode* node);
         static QString formatBytes(quint64 bytes);
         static QString categoryName(domain::FileCategory category);
         static QString pathToQString(const std::filesystem::path& path);
 
         application::ApplicationController& controller_;
         infrastructure::ExportManager exportManager_;
+        visualization::VisualizationModel visualizationModel_;
         QLineEdit* rootPathEdit_ = nullptr;
         QPushButton* browseButton_ = nullptr;
         QPushButton* runButton_ = nullptr;
@@ -66,6 +71,8 @@ namespace ui
         QLabel* currentPathLabel_ = nullptr;
         QTreeWidget* directoryTree_ = nullptr;
         QTableWidget* statisticsTable_ = nullptr;
+        QComboBox* chartScopeCombo_ = nullptr;
+        QtCharts::QChartView* chartView_ = nullptr;
         QPlainTextEdit* errorsLog_ = nullptr;
     };
 }
