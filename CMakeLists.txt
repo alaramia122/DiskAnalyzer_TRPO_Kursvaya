@@ -51,6 +51,8 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/infrastructure/aggregator/DirectoryAggregator.cpp
     src/infrastructure/export/ExportManager.h
     src/infrastructure/export/ExportManager.cpp
+    src/visualization/models/VisualizationModel.h
+    src/visualization/models/VisualizationModel.cpp
 )
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
@@ -158,5 +160,20 @@ if(BUILD_TESTING)
     add_test(
         NAME ApplicationControllerTest
         COMMAND ApplicationControllerTest
+    )
+
+    add_executable(VisualizationModelTest
+        tests/VisualizationModelTest.cpp
+        src/domain/models/DirectoryStatistics.cpp
+        src/visualization/models/VisualizationModel.cpp
+    )
+
+    target_include_directories(VisualizationModelTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME VisualizationModelTest
+        COMMAND VisualizationModelTest
     )
 endif()
