@@ -49,6 +49,8 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
 
     src/infrastructure/aggregator/DirectoryAggregator.h
     src/infrastructure/aggregator/DirectoryAggregator.cpp
+    src/infrastructure/cache/DirectoryCacheManager.h
+    src/infrastructure/cache/DirectoryCacheManager.cpp
     src/infrastructure/export/ExportManager.h
     src/infrastructure/export/ExportManager.cpp
     src/visualization/models/VisualizationModel.h
@@ -175,5 +177,20 @@ if(BUILD_TESTING)
     add_test(
         NAME VisualizationModelTest
         COMMAND VisualizationModelTest
+    )
+
+    add_executable(DirectoryCacheManagerTest
+        tests/DirectoryCacheManagerTest.cpp
+        src/infrastructure/cache/DirectoryCacheManager.h
+        src/infrastructure/cache/DirectoryCacheManager.cpp
+    )
+
+    target_include_directories(DirectoryCacheManagerTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME DirectoryCacheManagerTest
+        COMMAND DirectoryCacheManagerTest
     )
 endif()
