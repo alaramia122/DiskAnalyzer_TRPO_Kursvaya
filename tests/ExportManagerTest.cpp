@@ -70,8 +70,8 @@ int main()
                       "JSON contains root object");
     passed &= require(json.find("\"filesCount\": 1") != std::string::npos,
                       "JSON contains direct file count");
-    passed &= require(json.find("example.txt") != std::string::npos,
-                      "JSON contains directory path");
+    passed &= require(json.find(root.u8string()) != std::string::npos,
+                      "JSON contains root directory path");
 
     passed &= require(
         exporter.exportResult(result, txtPath, domain::ExportFormat::Txt, &errorMessage),
@@ -79,8 +79,8 @@ int main()
     const std::string txt = readFile(txtPath);
     passed &= require(txt.find("Результаты анализа") != std::string::npos,
                       "TXT contains human-readable heading");
-    passed &= require(txt.find("example.txt") != std::string::npos,
-                      "TXT contains directory path");
+    passed &= require(txt.find(root.u8string()) != std::string::npos,
+                      "TXT contains root directory path");
 
     const fs::path missingOutput = root / "missing-parent" / "result.json";
     passed &= require(
