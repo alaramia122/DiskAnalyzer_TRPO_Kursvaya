@@ -49,6 +49,8 @@ add_executable(DiskAnalyzer_TRPO_Kursovaya
 
     src/infrastructure/aggregator/DirectoryAggregator.h
     src/infrastructure/aggregator/DirectoryAggregator.cpp
+    src/infrastructure/export/ExportManager.h
+    src/infrastructure/export/ExportManager.cpp
 )
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
@@ -104,5 +106,28 @@ if(BUILD_TESTING)
     add_test(
         NAME AnalysisPipelineIntegrationTest
         COMMAND AnalysisPipelineIntegrationTest
+    )
+
+    add_executable(ExportManagerTest
+        tests/ExportManagerTest.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+        src/infrastructure/export/ExportManager.cpp
+        src/application/AnalysisPipeline.cpp
+    )
+
+    target_include_directories(ExportManagerTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME ExportManagerTest
+        COMMAND ExportManagerTest
     )
 endif()
