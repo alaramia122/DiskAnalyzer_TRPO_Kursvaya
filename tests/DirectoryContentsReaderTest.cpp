@@ -72,6 +72,47 @@ int main()
     passed &= require(foundText, "regular file metadata and category are populated");
     passed &= require(foundNestedDirectory, "subdirectory is listed without recursion");
 
+    // Проверяем символические ссылки там, где ОС и права пользователя
+    // позволяют их создавать. На Windows создание ссылок может быть запрещено
+    // политикой системы, поэтому отказ создания не является падением теста.
+    const fs::path directoryLink = root / "nested-link";
+    std::error_code symlinkError;
+    fs::create_directory_symlink(nested, directoryLink, symlinkError);
+    if (!symlinkError)
+    {
+        const auto withDirectoryLink = reader.read(root);
+        bool foundDirectoryLink = false;
+        for (const auto& entry : withDirectoryLink.entries)
+        {
+            if (entry.path.filename() == "nested-link")
+            {
+                foundDirectoryLink =
+                    entry.type == domain::FileSystemObjectType::Directory;
+            }
+        }
+        passed &= require(foundDirectoryLink,
+                          "symlink to a directory is shown as a directory");
+    }
+
+    const fs::path brokenLink = root / "broken-link";
+    symlinkError.clear();
+    fs::create_symlink(root / "target-that-does-not-exist",
+                       brokenLink, symlinkError);
+    if (!symlinkError)
+    {
+        const auto withBrokenLink = reader.read(root);
+        bool reportedBrokenLink = false;
+        for (const auto& readError : withBrokenLink.errors)
+        {
+            if (readError.path.filename() == "broken-link")
+            {
+                reportedBrokenLink = true;
+            }
+        }
+        passed &= require(reportedBrokenLink,
+                          "broken symlink is reported as a read error");
+    }
+
     const auto missing = reader.read(root / "does-not-exist");
     passed &= require(!missing.opened, "missing directory is not reported as opened");
     passed &= require(!missing.errors.empty(),
