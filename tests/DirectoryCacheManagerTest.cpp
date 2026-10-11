@@ -73,6 +73,19 @@ int main()
     passed &= require(!disabled.store(first, {makeFile(first / "x.txt")}),
                       "zero-capacity cache rejects storage");
 
+    infrastructure::DirectoryCacheManager replacement(2);
+    passed &= require(replacement.store(first, {makeFile(first / "old.txt")}),
+                      "replacement cache accepts initial listing");
+    passed &= require(replacement.store(first, {
+                          makeFile(first / "new-a.txt"),
+                          makeFile(first / "new-b.txt")}),
+                      "storing the same directory replaces its listing");
+    const auto* replacedFiles = replacement.find(first);
+    passed &= require(replacement.cachedDirectoryCount() == 1 &&
+                      replacement.cachedFileCount() == 2 &&
+                      replacedFiles != nullptr && replacedFiles->size() == 2,
+                      "replacement updates cached-file accounting without duplicates");
+
     if (!passed)
     {
         return 1;
