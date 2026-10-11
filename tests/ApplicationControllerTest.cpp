@@ -54,6 +54,7 @@ int main(int argc, char* argv[])
     int finishedCount = 0;
     int firstStatus = -1;
     int secondStatus = -1;
+    int thirdStatus = -1;
     QEventLoop eventLoop;
     QTimer timeout;
     timeout.setSingleShot(true);
@@ -88,6 +89,16 @@ int main(int argc, char* argv[])
             else if (finishedCount == 2)
             {
                 secondStatus = status;
+                QTimer::singleShot(0, &eventLoop, [&]()
+                {
+                    passed &= require(
+                        controller.startAnalysis(root),
+                        "controller can restart after a cancelled analysis");
+                });
+            }
+            else if (finishedCount == 3)
+            {
+                thirdStatus = status;
                 eventLoop.quit();
             }
         });
@@ -104,14 +115,17 @@ int main(int argc, char* argv[])
     controller.waitForFinished();
 
     passed &= require(
-        finishedCount == 2,
-        "controller emits completion for both analysis runs");
+        finishedCount == 3,
+        "controller emits completion for all three analysis runs");
     passed &= require(
         firstStatus == static_cast<int>(domain::ScanStatus::Completed),
         "first controller run completes");
     passed &= require(
         secondStatus == static_cast<int>(domain::ScanStatus::Cancelled),
         "second controller run can be cancelled");
+    passed &= require(
+        thirdStatus == static_cast<int>(domain::ScanStatus::Completed),
+        "controller completes successfully after a cancelled run");
     passed &= require(
         !controller.isRunning(),
         "controller reports not running after completion");
