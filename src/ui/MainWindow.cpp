@@ -138,7 +138,7 @@ namespace ui
         rightLayout->addWidget(new QLabel(
             QStringLiteral("Статистика выбранного каталога"), rightPanel));
 
-        statisticsTable_ = new QTableWidget(0, 5, rightPanel);
+        statisticsTable_ = new QTableWidget(0, 7, rightPanel);
         statisticsTable_->setHorizontalHeaderLabels({
             QStringLiteral("Категория"),
             QStringLiteral("Файлы здесь"),
