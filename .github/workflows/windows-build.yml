@@ -1,0 +1,77 @@
+name: Windows build and tests
+
+on:
+  push:
+    branches:
+      - main
+      - implementation/scanner-and-classifier
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Prepare portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem -Path build -Recurse -Filter 'DiskAnalyzer_TRPO_Kursovaya.exe' |
+            Where-Object { $_.FullName -match '\\Release\\' } |
+            Select-Object -First 1
+          if (-not $exe) {
+            throw 'Release executable was not found.'
+          }
+          $package = Join-Path $PWD 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item $exe.FullName $package
+          $qtBin = Join-Path $env:Qt5_DIR '..\\..\\bin'
+          $qtBin = [System.IO.Path]::GetFullPath($qtBin)
+          $windeployqt = Join-Path $qtBin 'windeployqt.exe'
+          if (-not (Test-Path $windeployqt)) {
+            $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
+            if (-not $qmake) { throw 'Could not locate windeployqt.exe.' }
+            $windeployqt = Join-Path (Split-Path $qmake.Source) 'windeployqt.exe'
+          }
+          & $windeployqt --release --no-translations --no-system-d3d-compiler $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+          Copy-Item (Join-Path $exe.Directory.FullName '*') $package -Recurse -Force
+          @(
+            'DiskAnalyzer TRPO — portable Windows build',
+            '',
+            'Run DiskAnalyzer_TRPO_Kursovaya.exe.',
+            'No compiler or Qt installation is required.',
+            'If Windows SmartScreen shows a warning, verify that the archive was downloaded from this project GitHub Actions run.'
+          ) | Set-Content (Join-Path $package 'README-RUN.txt') -Encoding UTF8
+          Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $PWD 'DiskAnalyzer-Windows-x64.zip') -Force
+
+      - name: Upload portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-Windows-x64
+          path: DiskAnalyzer-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
