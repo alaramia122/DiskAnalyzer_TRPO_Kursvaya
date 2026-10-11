@@ -74,6 +74,9 @@ int main(int argc, char* argv[])
             if (finishedCount == 1)
             {
                 firstStatus = status;
+                passed &= require(
+                    !controller.startAnalysis(root),
+                    "controller rejects a new analysis during completion notification");
                 QTimer::singleShot(0, &eventLoop, [&]()
                 {
                     passed &= require(
