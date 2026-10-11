@@ -89,6 +89,24 @@ int main()
     passed &= require(!errorMessage.empty(),
                       "export reports a useful error message");
 
+    // An invalid format must not truncate an existing destination file.
+    const fs::path invalidFormatPath = root / "preserve.txt";
+    {
+        std::ofstream existing(invalidFormatPath, std::ios::binary);
+        existing << "preserve this content";
+    }
+    passed &= require(
+        !exporter.exportResult(
+            result, invalidFormatPath,
+            static_cast<domain::ExportFormat>(999), &errorMessage),
+        "export rejects an unsupported format");
+    passed &= require(
+        !errorMessage.empty(),
+        "unsupported format reports an error");
+    passed &= require(
+        readFile(invalidFormatPath) == "preserve this content",
+        "unsupported format does not truncate an existing file");
+
     domain::AnalysisResult emptyResult;
     passed &= require(
         !exporter.exportResult(emptyResult, jsonPath, domain::ExportFormat::Json, &errorMessage),
