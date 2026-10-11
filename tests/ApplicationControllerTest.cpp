@@ -92,6 +92,9 @@ int main(int argc, char* argv[])
     passed &= require(
         controller.startAnalysis(root),
         "controller starts the first analysis");
+    passed &= require(
+        !controller.startAnalysis(root),
+        "controller rejects a second analysis while the first is active");
 
     timeout.start(15000);
     eventLoop.exec();
