@@ -188,10 +188,11 @@ int main()
         "pipeline stops when cancellation is requested by progress callback");
 
     domain::AnalysisResult fileAsRootResult;
+    std::atomic_bool rootFileNotCancelled(false);
     const domain::ScanStatus fileAsRootStatus = pipeline.run(
         testRoot / "root.txt",
         fileAsRootResult,
-        notCancelled);
+        rootFileNotCancelled);
 
     passed &= require(
         fileAsRootStatus == domain::ScanStatus::Failed,
