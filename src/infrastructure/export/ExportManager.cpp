@@ -162,6 +162,16 @@ namespace infrastructure
             return false;
         }
 
+        if (format != domain::ExportFormat::Json &&
+            format != domain::ExportFormat::Txt)
+        {
+            if (errorMessage)
+            {
+                *errorMessage = "Неизвестный формат экспорта.";
+            }
+            return false;
+        }
+
         std::ofstream output(outputPath, std::ios::binary | std::ios::trunc);
         if (!output)
         {
@@ -183,15 +193,6 @@ namespace infrastructure
             output << "Результаты анализа файловой системы\n";
             writeDirectoryText(output, *result.getRoot(), 0);
         }
-        else
-        {
-            if (errorMessage)
-            {
-                *errorMessage = "Неизвестный формат экспорта.";
-            }
-            return false;
-        }
-
         output.flush();
         if (!output)
         {
