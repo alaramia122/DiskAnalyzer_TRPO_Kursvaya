@@ -162,6 +162,41 @@ int main()
         cancelledStatus == domain::ScanStatus::Cancelled,
         "pipeline returns Cancelled when cancellation is requested");
 
+    // Отмена из callback прогресса проверяет остановку уже запущенного обхода,
+    // а не только обработку флага, установленного до вызова pipeline.
+    domain::AnalysisResult midScanCancelledResult;
+    std::atomic_bool midScanCancellationRequested(false);
+    bool initialProgressReported = false;
+    const domain::ScanStatus midScanCancelledStatus = pipeline.run(
+        testRoot,
+        midScanCancelledResult,
+        midScanCancellationRequested,
+        [&](const domain::ScanProgress&)
+        {
+            if (!initialProgressReported)
+            {
+                initialProgressReported = true;
+                midScanCancellationRequested.store(true);
+            }
+        });
+
+    passed &= require(
+        initialProgressReported,
+        "pipeline reports initial progress before scanning entries");
+    passed &= require(
+        midScanCancelledStatus == domain::ScanStatus::Cancelled,
+        "pipeline stops when cancellation is requested by progress callback");
+
+    domain::AnalysisResult fileAsRootResult;
+    const domain::ScanStatus fileAsRootStatus = pipeline.run(
+        testRoot / "root.txt",
+        fileAsRootResult,
+        notCancelled);
+
+    passed &= require(
+        fileAsRootStatus == domain::ScanStatus::Failed,
+        "pipeline rejects a regular file as the root directory");
+
     domain::AnalysisResult missingResult;
     std::atomic_bool notCancelled(false);
     const domain::ScanStatus missingPathStatus = pipeline.run(
