@@ -45,26 +45,21 @@ jobs:
           if (-not $exe) {
             throw 'Release executable was not found.'
           }
+          $windeploy = Get-Command windeployqt.exe -ErrorAction SilentlyContinue
+          if (-not $windeploy) {
+            throw 'Could not locate windeployqt.exe on PATH.'
+          }
+          & $windeploy.Source --release --no-translations --no-system-d3d-compiler $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
           $package = Join-Path $PWD 'package'
           New-Item -ItemType Directory -Force -Path $package | Out-Null
-          Copy-Item $exe.FullName $package
-          $qtBin = Join-Path $env:Qt5_DIR '..\\..\\bin'
-          $qtBin = [System.IO.Path]::GetFullPath($qtBin)
-          $windeployqt = Join-Path $qtBin 'windeployqt.exe'
-          if (-not (Test-Path $windeployqt)) {
-            $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
-            if (-not $qmake) { throw 'Could not locate windeployqt.exe.' }
-            $windeployqt = Join-Path (Split-Path $qmake.Source) 'windeployqt.exe'
-          }
-          & $windeployqt --release --no-translations --no-system-d3d-compiler $exe.FullName
-          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
           Copy-Item (Join-Path $exe.Directory.FullName '*') $package -Recurse -Force
           @(
             'DiskAnalyzer TRPO — portable Windows build',
             '',
             'Run DiskAnalyzer_TRPO_Kursovaya.exe.',
             'No compiler or Qt installation is required.',
-            'If Windows SmartScreen shows a warning, verify that the archive was downloaded from this project GitHub Actions run.'
+            'This package includes the Qt runtime libraries detected by windeployqt.'
           ) | Set-Content (Join-Path $package 'README-RUN.txt') -Encoding UTF8
           Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $PWD 'DiskAnalyzer-Windows-x64.zip') -Force
 
