@@ -17,7 +17,7 @@ namespace
     {
         if (!condition)
         {
-            std::cerr << "FAILED: " << message << '\\n';
+            std::cerr << "FAILED: " << message << '\n';
             return false;
         }
         return true;
@@ -33,14 +33,14 @@ namespace
 
     std::string jsonEscapedPath(const std::filesystem::path& path)
     {
-        std::string escaped = path.u8string();
+        const std::string pathUtf8 = path.u8string();
         std::string result;
-        result.reserve(escaped.size());
-        for (const char character : escaped)
+        result.reserve(pathUtf8.size());
+        for (const char character : pathUtf8)
         {
-            if (character == '\\\\')
+            if (character == '\\')
             {
-                result += "\\\\\\\\";
+                result += "\\\\";
             }
             else
             {
@@ -85,9 +85,9 @@ int main()
         exporter.exportResult(result, jsonPath, domain::ExportFormat::Json, &errorMessage),
         "JSON export succeeds");
     const std::string json = readFile(jsonPath);
-    passed &= require(json.find("\\\"root\\\"") != std::string::npos,
+    passed &= require(json.find("\"root\"") != std::string::npos,
                       "JSON contains root object");
-    passed &= require(json.find("\\\"filesCount\\\": 1") != std::string::npos,
+    passed &= require(json.find("\"filesCount\": 1") != std::string::npos,
                       "JSON contains direct file count");
     passed &= require(json.find(jsonEscapedPath(root)) != std::string::npos,
                       "JSON contains root directory path");
@@ -138,6 +138,6 @@ int main()
         return 1;
     }
 
-    std::cout << "All export checks passed.\\n";
+    std::cout << "All export checks passed.\n";
     return 0;
 }
