@@ -143,8 +143,10 @@ namespace ui
             QStringLiteral("Категория"),
             QStringLiteral("Файлы здесь"),
             QStringLiteral("Размер здесь"),
+            QStringLiteral("Размер здесь, %"),
             QStringLiteral("Файлы в поддереве"),
-            QStringLiteral("Размер поддерева")
+            QStringLiteral("Размер поддерева"),
+            QStringLiteral("Размер поддерева, %")
         });
         statisticsTable_->horizontalHeader()->setSectionResizeMode(
             QHeaderView::ResizeToContents);
@@ -550,12 +552,24 @@ namespace ui
 
             const int row = statisticsTable_->rowCount();
             statisticsTable_->insertRow(row);
+            const double directPercent = direct.filesSizeBytes == 0
+                ? 0.0
+                : 100.0 * static_cast<double>(
+                    direct.categories.sizesBytes[index]) /
+                    static_cast<double>(direct.filesSizeBytes);
+            const double subtreePercent = subtree.filesSizeBytes == 0
+                ? 0.0
+                : 100.0 * static_cast<double>(
+                    subtree.categories.sizesBytes[index]) /
+                    static_cast<double>(subtree.filesSizeBytes);
             const QStringList values = {
                 categoryName(category),
                 QString::number(directCount),
                 formatBytes(direct.categories.sizesBytes[index]),
+                QStringLiteral("%1 %").arg(directPercent, 0, 'f', 2),
                 QString::number(subtreeCount),
-                formatBytes(subtree.categories.sizesBytes[index])
+                formatBytes(subtree.categories.sizesBytes[index]),
+                QStringLiteral("%1 %").arg(subtreePercent, 0, 'f', 2)
             };
             for (int column = 0; column < values.size(); ++column)
             {
@@ -569,8 +583,10 @@ namespace ui
             QStringLiteral("Всего"),
             QString::number(node->stats.direct.filesCount),
             formatBytes(node->stats.direct.filesSizeBytes),
+            QStringLiteral("100,00 %"),
             QString::number(node->stats.subtree.filesCount),
-            formatBytes(node->stats.subtree.filesSizeBytes)
+            formatBytes(node->stats.subtree.filesSizeBytes),
+            QStringLiteral("100,00 %")
         };
         for (int column = 0; column < totals.size(); ++column)
         {
@@ -583,7 +599,7 @@ namespace ui
     void MainWindow::updateChart(const domain::DirectoryNode* node)
     {
         auto* chart = new QtCharts::QChart();
-        chart->setTitle(QStringLiteral("Количество файлов по категориям"));
+        chart->setTitle(QStringLiteral("Использование дискового пространства по категориям"));
         chart->legend()->setAlignment(Qt::AlignRight);
 
         if (node)
@@ -595,18 +611,30 @@ namespace ui
             auto* series = new QtCharts::QPieSeries();
             for (const auto& value : values)
             {
-                if (value.filesCount == 0)
+                if (value.sizeBytes == 0)
                 {
                     continue;
                 }
 
                 QtCharts::QPieSlice* slice = series->append(
                     categoryName(value.category),
-                    static_cast<qreal>(value.filesCount));
+                    static_cast<qreal>(value.sizeBytes));
                 slice->setLabel(
-                    QStringLiteral("%1: %2")
+                    QStringLiteral("%1: %2 (%3 %)")
                         .arg(categoryName(value.category))
-                        .arg(static_cast<qulonglong>(value.filesCount)));
+                        .arg(formatBytes(value.sizeBytes))
+                        .arg(node->stats.direct.filesSizeBytes +
+                             node->stats.subtree.filesSizeBytes == 0
+                            ? 0.0
+                            : 100.0 * static_cast<double>(value.sizeBytes) /
+                                static_cast<double>(
+                                    scope == visualization::StatisticsScope::Direct
+                                        ? node->stats.direct.filesSizeBytes
+                                        : scope == visualization::StatisticsScope::Subtree
+                                            ? node->stats.subtree.filesSizeBytes
+                                            : node->stats.direct.filesSizeBytes +
+                                              node->stats.subtree.filesSizeBytes),
+                             0, 'f', 2));
                 slice->setLabelVisible(true);
             }
 
