@@ -583,10 +583,12 @@ namespace ui
             QStringLiteral("Всего"),
             QString::number(node->stats.direct.filesCount),
             formatBytes(node->stats.direct.filesSizeBytes),
-            QStringLiteral("100,00 %"),
+            node->stats.direct.filesSizeBytes == 0
+                ? QStringLiteral("0,00 %") : QStringLiteral("100,00 %"),
             QString::number(node->stats.subtree.filesCount),
             formatBytes(node->stats.subtree.filesSizeBytes),
-            QStringLiteral("100,00 %")
+            node->stats.subtree.filesSizeBytes == 0
+                ? QStringLiteral("0,00 %") : QStringLiteral("100,00 %")
         };
         for (int column = 0; column < totals.size(); ++column)
         {
@@ -608,6 +610,13 @@ namespace ui
                 chartScopeCombo_->currentIndex());
             const auto values = visualizationModel_.buildCategoryValues(
                 node->stats, scope);
+            const quint64 scopeSize =
+                scope == visualization::StatisticsScope::Direct
+                    ? node->stats.direct.filesSizeBytes
+                    : scope == visualization::StatisticsScope::Subtree
+                        ? node->stats.subtree.filesSizeBytes
+                        : node->stats.direct.filesSizeBytes +
+                          node->stats.subtree.filesSizeBytes;
             auto* series = new QtCharts::QPieSeries();
             for (const auto& value : values)
             {
@@ -623,17 +632,10 @@ namespace ui
                     QStringLiteral("%1: %2 (%3 %)")
                         .arg(categoryName(value.category))
                         .arg(formatBytes(value.sizeBytes))
-                        .arg(node->stats.direct.filesSizeBytes +
-                             node->stats.subtree.filesSizeBytes == 0
+                        .arg(scopeSize == 0
                             ? 0.0
                             : 100.0 * static_cast<double>(value.sizeBytes) /
-                                static_cast<double>(
-                                    scope == visualization::StatisticsScope::Direct
-                                        ? node->stats.direct.filesSizeBytes
-                                        : scope == visualization::StatisticsScope::Subtree
-                                            ? node->stats.subtree.filesSizeBytes
-                                            : node->stats.direct.filesSizeBytes +
-                                              node->stats.subtree.filesSizeBytes),
+                                static_cast<double>(scopeSize),
                              0, 'f', 2));
                 slice->setLabelVisible(true);
             }
