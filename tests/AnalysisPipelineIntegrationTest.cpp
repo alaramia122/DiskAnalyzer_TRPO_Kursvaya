@@ -1,3 +1,5 @@
+// Интеграционные проверки сканера и конвейера: дерево каталогов,
+// direct/subtree статистика, пустые каталоги, ссылки и отмена анализа.
 #include "application/AnalysisPipeline.h"
 #include "infrastructure/aggregator/DirectoryAggregator.h"
 #include "infrastructure/classifier/FileClassifier.h"
