@@ -9,6 +9,9 @@ namespace infrastructure
     {
     }
 
+    // LRU поддерживается двумя структурами: entries_ хранит данные,
+    // lru_ — порядок использования (самый свежий элемент находится в начале).
+    // cachedFileCount_ корректируется при каждом добавлении, замене и удалении.
     bool DirectoryCacheManager::store(
         const std::filesystem::path& directory,
         FileList files)
@@ -103,6 +106,7 @@ namespace infrastructure
         cachedFileCount_ = 0;
     }
 
+    // Переносим использованную запись в начало списка LRU.
     void DirectoryCacheManager::touch(
         typename std::unordered_map<std::filesystem::path, CacheEntry>::iterator entry)
     {
@@ -111,6 +115,8 @@ namespace infrastructure
         entry->second.lruPosition = lru_.begin();
     }
 
+    // При переполнении удаляется запись с конца списка — самая давно
+    // не использовавшаяся; счётчик элементов кэша синхронно уменьшается.
     void DirectoryCacheManager::evictLeastRecentlyUsed()
     {
         if (lru_.empty())
