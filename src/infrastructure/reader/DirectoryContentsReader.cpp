@@ -11,6 +11,9 @@ namespace infrastructure
     {
     }
 
+    // Читает только непосредственных потомков указанного каталога.
+    // Это навигационная операция, а не повторный полный анализ дерева;
+    // отдельные ошибки записываются в результат и не скрываются.
     DirectoryReadResult DirectoryContentsReader::read(
         const std::filesystem::path& directory) const
     {
