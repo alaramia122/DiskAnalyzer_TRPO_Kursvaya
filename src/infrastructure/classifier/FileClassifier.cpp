@@ -94,6 +94,8 @@ namespace infrastructure
         {".drv", domain::FileCategory::System}
     };
 
+    // Классификация намеренно основана только на расширении: содержимое
+    // файла не читается, поэтому неизвестные расширения относятся к Other.
     domain::FileCategory FileClassifier::classify(
         const domain::FileInfo& file) const
     {
