@@ -1,3 +1,5 @@
+// Проверяет JSON/TXT экспорт, экранирование путей и обработку
+// некорректного формата или ошибки открытия выходного файла.
 #include "infrastructure/export/ExportManager.h"
 #include "infrastructure/aggregator/DirectoryAggregator.h"
 #include "infrastructure/classifier/FileClassifier.h"
