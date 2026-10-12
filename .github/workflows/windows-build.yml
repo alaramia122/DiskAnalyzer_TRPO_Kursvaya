@@ -4,11 +4,11 @@ name: Windows build and tests
 on:
   push:
     branches:
-      - main
-      - implementation/scanner-and-classifier
+      - '**'
   pull_request:
     branches:
       - main
+      - implementation/scanner-and-classifier
   workflow_dispatch:
 
 jobs:
