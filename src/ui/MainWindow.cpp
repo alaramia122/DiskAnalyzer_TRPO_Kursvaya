@@ -361,12 +361,14 @@ namespace ui
         switch (status)
         {
         case domain::ScanStatus::Completed:
+        {
             populateTree();
             const auto* root = controller_.result().getRoot();
             statusLabel_->setText(root && !root->scanComplete
                 ? QStringLiteral("Анализ завершён с пропусками. См. журнал ошибок.")
                 : QStringLiteral("Анализ завершён."));
             break;
+        }
         case domain::ScanStatus::Cancelled:
             statusLabel_->setText(QStringLiteral("Анализ отменён. Результат частичный."));
             populateTree();
