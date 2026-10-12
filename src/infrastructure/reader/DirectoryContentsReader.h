@@ -9,12 +9,14 @@
 
 namespace infrastructure
 {
+    /** Ошибка чтения конкретного элемента; остальные элементы могут быть доступны. */
     struct DirectoryReadError
     {
         std::filesystem::path path;
         std::string message;
     };
 
+    /** Результат чтения одного уровня; opened отличает пустой каталог от ошибки открытия. */
     struct DirectoryReadResult
     {
         std::vector<domain::FileInfo> entries;
