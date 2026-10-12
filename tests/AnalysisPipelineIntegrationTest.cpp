@@ -79,6 +79,9 @@ int main()
 
     if (result.getRoot())
     {
+        passed &= require(
+            result.getRoot()->scanComplete,
+            "readable directory tree is marked complete");
         const domain::DirectoryStatistics& stats = result.getRoot()->stats;
 
         passed &= require(
