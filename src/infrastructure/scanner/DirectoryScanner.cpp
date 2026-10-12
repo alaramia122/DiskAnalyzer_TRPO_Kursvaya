@@ -119,7 +119,8 @@ namespace infrastructure
                 {
                     result.getRoot()->scanComplete = false;
                 }
-                frame.node->scanComplete = false;
+                // Помечаем также текущую ветвь: результат до отмены частичный.
+                stack.back().node->scanComplete = false;
                 return domain::ScanStatus::Cancelled;
             }
 
