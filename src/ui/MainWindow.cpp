@@ -119,10 +119,12 @@ namespace ui
             QStringLiteral("Повторно прочитать только выбранный каталог"));
         contentsHeader->addWidget(refreshDirectoryButton_);
         leftLayout->addLayout(contentsHeader);
-        filesTable_ = new QTableWidget(0, 4, leftPanel);
+        filesTable_ = new QTableWidget(0, 6, leftPanel);
         filesTable_->setHorizontalHeaderLabels({
             QStringLiteral("Имя"), QStringLiteral("Тип"),
-            QStringLiteral("Размер"), QStringLiteral("Категория")
+            QStringLiteral("Размер"), QStringLiteral("Категория"),
+            QStringLiteral("Размер поддерева"),
+            QStringLiteral("Категории в поддереве")
         });
         filesTable_->horizontalHeader()->setSectionResizeMode(
             QHeaderView::ResizeToContents);
@@ -359,11 +361,14 @@ namespace ui
         switch (status)
         {
         case domain::ScanStatus::Completed:
-            statusLabel_->setText(QStringLiteral("Анализ завершён."));
             populateTree();
+            const auto* root = controller_.result().getRoot();
+            statusLabel_->setText(root && !root->scanComplete
+                ? QStringLiteral("Анализ завершён с пропусками. См. журнал ошибок.")
+                : QStringLiteral("Анализ завершён."));
             break;
         case domain::ScanStatus::Cancelled:
-            statusLabel_->setText(QStringLiteral("Анализ отменён."));
+            statusLabel_->setText(QStringLiteral("Анализ отменён. Результат частичный."));
             populateTree();
             break;
         case domain::ScanStatus::Failed:
@@ -514,12 +519,45 @@ namespace ui
             const QString name = pathToQString(info.path.filename());
             const QString type = info.type == domain::FileSystemObjectType::Directory
                 ? QStringLiteral("Каталог") : QStringLiteral("Файл");
+            QString subtreeSize = QStringLiteral("—");
+            QString subtreeCategories = QStringLiteral("—");
+            if (info.type == domain::FileSystemObjectType::Directory)
+            {
+                const auto* childNode = controller_.result().findNode(info.path);
+                if (childNode)
+                {
+                    subtreeSize = formatBytes(
+                        childNode->stats.direct.filesSizeBytes +
+                        childNode->stats.subtree.filesSizeBytes);
+                    QStringList summaries;
+                    for (const auto category : Categories)
+                    {
+                        const auto index = static_cast<std::size_t>(category);
+                        const quint64 count =
+                            childNode->stats.direct.categories.filesCount[index] +
+                            childNode->stats.subtree.categories.filesCount[index];
+                        if (count > 0)
+                        {
+                            summaries.append(QStringLiteral("%1: %2")
+                                .arg(categoryName(category)).arg(count));
+                        }
+                    }
+                    subtreeCategories = summaries.isEmpty()
+                        ? QStringLiteral("Нет файлов")
+                        : summaries.join(QStringLiteral("; "));
+                    if (!childNode->scanComplete)
+                    {
+                        subtreeCategories.prepend(QStringLiteral("НЕПОЛНО: "));
+                    }
+                }
+            }
             const QStringList values = {
                 name, type,
                 info.type == domain::FileSystemObjectType::Directory
                     ? QStringLiteral("—") : formatBytes(info.sizeBytes),
                 info.type == domain::FileSystemObjectType::Directory
-                    ? QStringLiteral("—") : categoryName(info.category)
+                    ? QStringLiteral("—") : categoryName(info.category),
+                subtreeSize, subtreeCategories
             };
             for (int column = 0; column < values.size(); ++column)
             {
@@ -628,7 +666,8 @@ namespace ui
                 QtCharts::QPieSlice* slice = series->append(
                     categoryName(value.category),
                     static_cast<qreal>(value.sizeBytes));
-                slice->setLabel(
+                slice->setLabelVisible(false);
+                slice->setToolTip(
                     QStringLiteral("%1: %2 (%3 %)")
                         .arg(categoryName(value.category))
                         .arg(formatBytes(value.sizeBytes))
@@ -637,7 +676,6 @@ namespace ui
                             : 100.0 * static_cast<double>(value.sizeBytes) /
                                 static_cast<double>(scopeSize),
                              0, 'f', 2));
-                slice->setLabelVisible(true);
             }
 
             if (series->count() > 0)
