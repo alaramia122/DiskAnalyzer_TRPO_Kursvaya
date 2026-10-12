@@ -1,3 +1,5 @@
+// Проверяет чтение только непосредственного содержимого каталога,
+// классификацию файлов и обработку файловых ошибок.
 #include "infrastructure/classifier/FileClassifier.h"
 #include "infrastructure/reader/DirectoryContentsReader.h"
 
