@@ -25,6 +25,12 @@ namespace QtCharts { class QChartView; }
 
 namespace ui
 {
+    /**
+     * @brief Главное окно приложения и адаптер между моделями и Qt Widgets.
+     *
+     * Не выполняет сканирование самостоятельно: делегирует его контроллеру,
+     * отображает готовый AnalysisResult и управляет локальным кэшем навигации.
+     */
     class MainWindow final : public QMainWindow
     {
         Q_OBJECT
@@ -62,11 +68,13 @@ namespace ui
         static QString categoryName(domain::FileCategory category);
         static QString pathToQString(const std::filesystem::path& path);
 
+        // Сервисы окна. Контроллер и classifier должны жить дольше окна.
         application::ApplicationController& controller_;
         infrastructure::ExportManager exportManager_;
         visualization::VisualizationModel visualizationModel_;
         infrastructure::DirectoryCacheManager directoryCache_;
         infrastructure::FileClassifier fileClassifier_;
+        // Элементы ввода и управления анализом.
         QLineEdit* rootPathEdit_ = nullptr;
         QPushButton* browseButton_ = nullptr;
         QPushButton* runButton_ = nullptr;
@@ -74,9 +82,11 @@ namespace ui
         QPushButton* refreshDirectoryButton_ = nullptr;
         QPushButton* exportJsonButton_ = nullptr;
         QPushButton* exportTxtButton_ = nullptr;
+        // Состояние операции и журнал диагностики.
         QProgressBar* progressBar_ = nullptr;
         QLabel* statusLabel_ = nullptr;
         QLabel* currentPathLabel_ = nullptr;
+        // Навигация, табличная статистика и визуализация выбранного узла.
         QTreeWidget* directoryTree_ = nullptr;
         QTableWidget* filesTable_ = nullptr;
         QTableWidget* statisticsTable_ = nullptr;
