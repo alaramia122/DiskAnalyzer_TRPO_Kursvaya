@@ -243,6 +243,8 @@ namespace ui
         }
     }
 
+    // Проверяет введённый путь и запускает контроллер; фактический обход
+    // выполняется в worker-потоке, поэтому окно остаётся отзывчивым.
     void MainWindow::startAnalysis()
     {
         const QString selectedPath = rootPathEdit_->text().trimmed();
@@ -354,6 +356,8 @@ namespace ui
                 .arg(path));
     }
 
+    // Переводит интерфейс в неактивное состояние и явно различает
+    // полный результат, частичный результат после отмены и ошибку запуска.
     void MainWindow::handleAnalysisFinished(int statusValue)
     {
         setBusy(false);
@@ -384,6 +388,8 @@ namespace ui
         }
     }
 
+    // Централизованно блокирует конфликтующие действия во время анализа.
+    // Результат разрешено читать из GUI только после завершения worker-потока.
     void MainWindow::setBusy(bool busy)
     {
         rootPathEdit_->setEnabled(!busy);
@@ -398,6 +404,7 @@ namespace ui
         exportTxtButton_->setEnabled(hasResult);
     }
 
+    // Перестраивает дерево по снимку AnalysisResult, не запуская новый обход.
     void MainWindow::populateTree()
     {
         directoryTree_->clear();
@@ -415,6 +422,8 @@ namespace ui
         }
     }
 
+    // Рекурсивно отображает узлы результата; путь хранится отдельно от подписи,
+    // поскольку имена каталогов могут совпадать в разных ветвях дерева.
     void MainWindow::appendDirectory(
         QTreeWidgetItem* parentItem,
         const domain::DirectoryNode* node)
@@ -482,6 +491,9 @@ namespace ui
         showDirectoryContents(directory);
     }
 
+    // Показывает непосредственные элементы выбранного каталога. Список
+    // может поступить из LRU-кэша или быть перечитан с диска; глобальная
+    // статистика при этом не пересчитывается.
     void MainWindow::showDirectoryContents(const std::filesystem::path& directory)
     {
         filesTable_->setRowCount(0);
@@ -570,6 +582,7 @@ namespace ui
         }
     }
 
+    // Формирует табличное представление direct/subtree статистики узла.
     void MainWindow::showStatistics(const domain::DirectoryNode* node)
     {
         statisticsTable_->setRowCount(0);
@@ -638,6 +651,9 @@ namespace ui
         }
     }
 
+    // Диаграмма отражает размеры категорий, а не количество файлов.
+    // Точные значения выводятся при наведении, чтобы подписи секторов
+    // не перекрывали друг друга при большом числе категорий.
     void MainWindow::updateChart(const domain::DirectoryNode* node)
     {
         auto* chart = new QtCharts::QChart();
