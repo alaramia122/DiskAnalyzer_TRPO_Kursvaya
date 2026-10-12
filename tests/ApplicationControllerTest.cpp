@@ -1,3 +1,5 @@
+// Проверяет жизненный цикл фоновой задачи: Qt-сигналы, отмену,
+// завершение и возможность повторного запуска контроллера.
 #include "application/ApplicationController.h"
 #include "infrastructure/aggregator/DirectoryAggregator.h"
 #include "infrastructure/classifier/FileClassifier.h"
