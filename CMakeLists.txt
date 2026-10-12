@@ -20,7 +20,11 @@ find_package(Qt5 REQUIRED COMPONENTS
     Charts
 )
 
-add_executable(DiskAnalyzer_TRPO_Kursovaya
+if(WIN32)
+    add_executable(DiskAnalyzer_TRPO_Kursovaya WIN32
+else()
+    add_executable(DiskAnalyzer_TRPO_Kursovaya
+endif()
     src/application/AnalysisPipeline.h
     src/application/AnalysisPipeline.cpp
     src/application/ApplicationController.h
