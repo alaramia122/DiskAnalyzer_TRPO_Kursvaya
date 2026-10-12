@@ -115,6 +115,11 @@ namespace infrastructure
         {
             if (cancellationRequested.load())
             {
+                if (result.getRoot())
+                {
+                    result.getRoot()->scanComplete = false;
+                }
+                frame.node->scanComplete = false;
                 return domain::ScanStatus::Cancelled;
             }
 
@@ -282,6 +287,10 @@ namespace infrastructure
 
         if (cancellationRequested.load())
         {
+            if (result.getRoot())
+            {
+                result.getRoot()->scanComplete = false;
+            }
             return domain::ScanStatus::Cancelled;
         }
 
