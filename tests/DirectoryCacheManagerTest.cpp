@@ -1,3 +1,5 @@
+// Проверяет ограничение ёмкости LRU-кэша, порядок вытеснения,
+// инвалидирование записей и согласованность счётчиков.
 #include "infrastructure/cache/DirectoryCacheManager.h"
 
 #include <iostream>
