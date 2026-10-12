@@ -2,6 +2,8 @@
 
 namespace visualization
 {
+    // Преобразуем агрегированную модель в плоский набор значений для UI.
+    // Total — сумма direct и subtree; размеры и количества считаются независимо.
     std::array<CategoryValue, domain::FileCategoryCount>
         VisualizationModel::buildCategoryValues(
             const domain::DirectoryStatistics& statistics,
