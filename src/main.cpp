@@ -6,6 +6,8 @@
 
 #include <QApplication>
 
+// Точка композиции приложения: здесь создаются реализации domain-контрактов,
+// связываются зависимости конвейера и контроллера, затем запускается Qt GUI.
 int main(int argc, char* argv[])
 {
     QApplication qtApp(argc, argv);
