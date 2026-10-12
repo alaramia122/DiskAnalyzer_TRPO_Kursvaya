@@ -1,3 +1,5 @@
+// Проверяет преобразование direct, subtree и total статистики
+// в значения категорий, используемые диаграммой.
 #include "visualization/models/VisualizationModel.h"
 
 #include <iostream>
