@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <cstdint>
 #include "../enums/FileCategory.h"
 #include "../enums/FileSystemObjectType.h"
 

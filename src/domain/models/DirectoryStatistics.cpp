@@ -3,6 +3,8 @@
 
 namespace domain {
 
+    // addFile изменяет только direct-область: статистика вложенных каталогов
+    // рассчитывается отдельно агрегатором после завершения сканирования.
     void DirectoryStatistics::addFile(FileCategory category, std::uintmax_t sizeBytes)
     {
         // 1. Обновляем ПРЯМУЮ статистику текущей директории
@@ -26,6 +28,8 @@ namespace domain {
         }
     }
 
+    // Суммирует статистику дочернего поддерева в subtree текущего узла.
+    // Перед повторной агрегацией вызывающая сторона должна очистить subtree.
     void DirectoryStatistics::mergeSubtree(const DirectoryStatistics& import_subtree)
     {
         // Добавляем статистику из поддерева (только вложенные папки)

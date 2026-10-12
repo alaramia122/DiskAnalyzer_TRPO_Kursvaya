@@ -1,0 +1,174 @@
+#include "ApplicationController.h"
+
+#include <QMetaObject>
+#include <QString>
+
+#include <exception>
+#include <system_error>
+#include <utility>
+
+namespace application
+{
+    ApplicationController::ApplicationController(
+        const AnalysisPipeline& pipeline,
+        QObject* parent)
+        : QObject(parent),
+          pipeline_(pipeline)
+    {
+    }
+
+    ApplicationController::~ApplicationController()
+    {
+        cancelAnalysis();
+        waitForFinished();
+    }
+
+    bool ApplicationController::startAnalysis(
+        const std::filesystem::path& rootPath)
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+
+        if (running_.load() || completionPending_.load())
+        {
+            return false;
+        }
+
+        // Завершившийся поток присоединяется перед повторным запуском.
+        if (worker_.joinable())
+        {
+            worker_.join();
+        }
+
+        cancellationRequested_.store(false);
+        running_.store(true);
+
+        // Файловый обход выполняется вне GUI-потока. Все сигналы Qt
+        // ставятся в очередь главного потока, чтобы обработчики интерфейса
+        // не вызывались напрямую из worker-потока.
+        worker_ = std::thread([this, rootPath]()
+        {
+            QMetaObject::invokeMethod(
+                this,
+                [this]()
+                {
+                    emit analysisStarted();
+                },
+                Qt::QueuedConnection);
+
+            domain::ScanStatus status = domain::ScanStatus::Failed;
+
+            try
+            {
+                status = pipeline_.run(
+                    rootPath,
+                    result_,
+                    cancellationRequested_,
+                    [this](const domain::ScanProgress& progress)
+                    {
+                        const QString path =
+                            QString::fromUtf8(
+                                progress.currentPath.u8string().c_str());
+
+                        QMetaObject::invokeMethod(
+                            this,
+                            [this, path,
+                             files = static_cast<qulonglong>(
+                                 progress.processedFiles),
+                             directories = static_cast<qulonglong>(
+                                 progress.processedDirectories)]()
+                            {
+                                emit progressChanged(path, files, directories);
+                            },
+                            Qt::QueuedConnection);
+                    },
+                    [this](const domain::ScanError& error)
+                    {
+                        const QString path =
+                            QString::fromUtf8(error.path.u8string().c_str());
+                        const QString message =
+                            QString::fromStdString(error.message);
+
+                        QMetaObject::invokeMethod(
+                            this,
+                            [this, path, message]()
+                            {
+                                emit scanError(path, message);
+                            },
+                            Qt::QueuedConnection);
+                    });
+            }
+            catch (const std::exception& exception)
+            {
+                const QString message =
+                    QString::fromUtf8(exception.what());
+
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, rootPath, message]()
+                    {
+                        const QString path =
+                            QString::fromUtf8(rootPath.u8string().c_str());
+                        emit scanError(path, message);
+                    },
+                    Qt::QueuedConnection);
+
+                status = domain::ScanStatus::Failed;
+            }
+            catch (...)
+            {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this]()
+                    {
+                        emit scanError(
+                            QString(),
+                            QStringLiteral("Неизвестная ошибка анализа."));
+                    },
+                    Qt::QueuedConnection);
+
+                status = domain::ScanStatus::Failed;
+            }
+
+            // Сначала публикуем итоговый статус, затем разрешаем новый запуск:
+            // GUI должен успеть обработать analysisFinished и прочитать result_.
+            completionPending_.store(true);
+            running_.store(false);
+
+            QMetaObject::invokeMethod(
+                this,
+                [this, status]()
+                {
+                    emit analysisFinished(static_cast<int>(status));
+                    completionPending_.store(false);
+                },
+                Qt::QueuedConnection);
+        });
+
+        return true;
+    }
+
+    void ApplicationController::cancelAnalysis()
+    {
+        cancellationRequested_.store(true);
+    }
+
+    void ApplicationController::waitForFinished()
+    {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+
+        if (worker_.joinable())
+        {
+            worker_.join();
+        }
+    }
+
+    const domain::AnalysisResult& ApplicationController::result() const
+    {
+        return result_;
+    }
+
+    bool ApplicationController::isRunning() const
+    {
+        return running_.load();
+    }
+}

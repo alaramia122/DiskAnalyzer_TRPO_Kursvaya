@@ -1,0 +1,762 @@
+#include "MainWindow.h"
+
+#include "../domain/enums/ScanStatus.h"
+#include "../domain/models/DirectoryNode.h"
+#include "../domain/enums/ExportFormat.h"
+#include "../domain/enums/FileSystemObjectType.h"
+#include "../infrastructure/reader/DirectoryContentsReader.h"
+
+#include <QFileDialog>
+#include <QHeaderView>
+#include <QComboBox>
+#include <QPainter>
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QPieSeries>
+#include <QtCharts/QPieSlice>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPlainTextEdit>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QSplitter>
+#include <QTableWidget>
+#include <QAbstractItemView>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QVBoxLayout>
+#include <QWidget>
+
+#include <array>
+#include <cstdint>
+#include <system_error>
+#include <utility>
+
+namespace ui
+{
+    namespace
+    {
+        constexpr int PathRole = Qt::UserRole + 1;
+
+        const std::array<domain::FileCategory, domain::FileCategoryCount>
+            Categories = {
+                domain::FileCategory::Unknown,
+                domain::FileCategory::Documents,
+                domain::FileCategory::Images,
+                domain::FileCategory::Video,
+                domain::FileCategory::Audio,
+                domain::FileCategory::Archives,
+                domain::FileCategory::Executables,
+                domain::FileCategory::SourceCode,
+                domain::FileCategory::System,
+                domain::FileCategory::Other
+            };
+    }
+
+    MainWindow::MainWindow(
+        application::ApplicationController& controller,
+        QWidget* parent)
+        : QMainWindow(parent),
+          controller_(controller)
+    {
+        setWindowTitle(QStringLiteral("Disk Analyzer"));
+        resize(1200, 800);
+
+        auto* central = new QWidget(this);
+        auto* mainLayout = new QVBoxLayout(central);
+
+        auto* pathLayout = new QHBoxLayout();
+        rootPathEdit_ = new QLineEdit(central);
+        rootPathEdit_->setPlaceholderText(
+            QStringLiteral("Выберите каталог для анализа"));
+        browseButton_ = new QPushButton(QStringLiteral("Обзор…"), central);
+        runButton_ = new QPushButton(QStringLiteral("Начать анализ"), central);
+        cancelButton_ = new QPushButton(QStringLiteral("Отмена"), central);
+        cancelButton_->setEnabled(false);
+        pathLayout->addWidget(new QLabel(QStringLiteral("Каталог:"), central));
+        pathLayout->addWidget(rootPathEdit_, 1);
+        pathLayout->addWidget(browseButton_);
+        pathLayout->addWidget(runButton_);
+        pathLayout->addWidget(cancelButton_);
+        mainLayout->addLayout(pathLayout);
+
+        auto* exportLayout = new QHBoxLayout();
+        exportJsonButton_ = new QPushButton(QStringLiteral("Экспорт JSON…"), central);
+        exportTxtButton_ = new QPushButton(QStringLiteral("Экспорт TXT…"), central);
+        exportJsonButton_->setEnabled(false);
+        exportTxtButton_->setEnabled(false);
+        exportLayout->addWidget(exportJsonButton_);
+        exportLayout->addWidget(exportTxtButton_);
+        exportLayout->addStretch(1);
+        mainLayout->addLayout(exportLayout);
+
+        statusLabel_ = new QLabel(QStringLiteral("Готов к анализу."), central);
+        currentPathLabel_ = new QLabel(central);
+        currentPathLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        progressBar_ = new QProgressBar(central);
+        progressBar_->setRange(0, 0);
+        progressBar_->setVisible(false);
+        mainLayout->addWidget(statusLabel_);
+        mainLayout->addWidget(currentPathLabel_);
+        mainLayout->addWidget(progressBar_);
+
+        auto* splitter = new QSplitter(Qt::Horizontal, central);
+        auto* leftPanel = new QWidget(splitter);
+        auto* leftLayout = new QVBoxLayout(leftPanel);
+        leftLayout->setContentsMargins(0, 0, 0, 0);
+        directoryTree_ = new QTreeWidget(leftPanel);
+        directoryTree_->setHeaderLabels({QStringLiteral("Каталоги")});
+        directoryTree_->setMinimumWidth(280);
+        leftLayout->addWidget(directoryTree_, 2);
+        auto* contentsHeader = new QHBoxLayout();
+        contentsHeader->addWidget(new QLabel(
+            QStringLiteral("Содержимое выбранного каталога"), leftPanel));
+        refreshDirectoryButton_ = new QPushButton(
+            QStringLiteral("Обновить"), leftPanel);
+        refreshDirectoryButton_->setToolTip(
+            QStringLiteral("Повторно прочитать только выбранный каталог"));
+        contentsHeader->addWidget(refreshDirectoryButton_);
+        leftLayout->addLayout(contentsHeader);
+        filesTable_ = new QTableWidget(0, 6, leftPanel);
+        filesTable_->setHorizontalHeaderLabels({
+            QStringLiteral("Имя"), QStringLiteral("Тип"),
+            QStringLiteral("Размер"), QStringLiteral("Категория"),
+            QStringLiteral("Размер поддерева"),
+            QStringLiteral("Категории в поддереве")
+        });
+        filesTable_->horizontalHeader()->setSectionResizeMode(
+            QHeaderView::ResizeToContents);
+        filesTable_->horizontalHeader()->setStretchLastSection(true);
+        filesTable_->verticalHeader()->setVisible(false);
+        filesTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        filesTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+        leftLayout->addWidget(filesTable_, 1);
+
+        auto* rightPanel = new QWidget(splitter);
+        auto* rightLayout = new QVBoxLayout(rightPanel);
+        rightLayout->setContentsMargins(0, 0, 0, 0);
+        rightLayout->addWidget(new QLabel(
+            QStringLiteral("Статистика выбранного каталога"), rightPanel));
+
+        statisticsTable_ = new QTableWidget(0, 7, rightPanel);
+        statisticsTable_->setHorizontalHeaderLabels({
+            QStringLiteral("Категория"),
+            QStringLiteral("Файлы здесь"),
+            QStringLiteral("Размер здесь"),
+            QStringLiteral("Размер здесь, %"),
+            QStringLiteral("Файлы в поддереве"),
+            QStringLiteral("Размер поддерева"),
+            QStringLiteral("Размер поддерева, %")
+        });
+        statisticsTable_->horizontalHeader()->setSectionResizeMode(
+            QHeaderView::ResizeToContents);
+        statisticsTable_->horizontalHeader()->setStretchLastSection(true);
+        statisticsTable_->verticalHeader()->setVisible(false);
+        statisticsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        statisticsTable_->setSelectionMode(QAbstractItemView::NoSelection);
+        rightLayout->addWidget(statisticsTable_, 1);
+
+        auto* chartHeader = new QHBoxLayout();
+        chartHeader->addWidget(new QLabel(
+            QStringLiteral("Распределение файлов по категориям"), rightPanel));
+        chartScopeCombo_ = new QComboBox(rightPanel);
+        chartScopeCombo_->addItem(QStringLiteral("Только здесь"));
+        chartScopeCombo_->addItem(QStringLiteral("Вложенные каталоги"));
+        chartScopeCombo_->addItem(QStringLiteral("Весь каталог"));
+        chartHeader->addWidget(chartScopeCombo_);
+        rightLayout->addLayout(chartHeader);
+
+        chartView_ = new QtCharts::QChartView(new QtCharts::QChart(), rightPanel);
+        chartView_->setRenderHint(QPainter::Antialiasing);
+        chartView_->setMinimumHeight(220);
+        rightLayout->addWidget(chartView_);
+
+        rightLayout->addWidget(new QLabel(
+            QStringLiteral("Ошибки доступа к файловой системе"), rightPanel));
+        errorsLog_ = new QPlainTextEdit(rightPanel);
+        errorsLog_->setReadOnly(true);
+        errorsLog_->setMaximumBlockCount(2000);
+        errorsLog_->setPlaceholderText(
+            QStringLiteral("Ошибки чтения каталогов и файлов появятся здесь."));
+        rightLayout->addWidget(errorsLog_, 1);
+
+        splitter->addWidget(leftPanel);
+        splitter->addWidget(rightPanel);
+        splitter->setStretchFactor(0, 1);
+        splitter->setStretchFactor(1, 2);
+        mainLayout->addWidget(splitter, 1);
+        setCentralWidget(central);
+
+        connect(browseButton_, &QPushButton::clicked,
+                this, &MainWindow::chooseRootDirectory);
+        connect(runButton_, &QPushButton::clicked,
+                this, &MainWindow::startAnalysis);
+        connect(cancelButton_, &QPushButton::clicked,
+                this, &MainWindow::cancelAnalysis);
+        connect(exportJsonButton_, &QPushButton::clicked,
+                this, &MainWindow::exportJson);
+        connect(exportTxtButton_, &QPushButton::clicked,
+                this, &MainWindow::exportTxt);
+        connect(directoryTree_, &QTreeWidget::currentItemChanged,
+                this, &MainWindow::showSelectedDirectory);
+        connect(refreshDirectoryButton_, &QPushButton::clicked,
+                this, &MainWindow::refreshDirectoryContents);
+        connect(chartScopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int)
+                {
+                    showSelectedDirectory(directoryTree_->currentItem());
+                });
+
+        connect(&controller_, &application::ApplicationController::analysisStarted,
+                this, [this]()
+                {
+                    statusLabel_->setText(QStringLiteral("Анализ выполняется…"));
+                    errorsLog_->clear();
+                    clearDirectoryCache();
+                    filesTable_->setRowCount(0);
+                    directoryTree_->clear();
+                    statisticsTable_->setRowCount(0);
+                    exportJsonButton_->setEnabled(false);
+                    exportTxtButton_->setEnabled(false);
+                });
+        connect(&controller_, &application::ApplicationController::progressChanged,
+                this, &MainWindow::handleProgress);
+        connect(&controller_, &application::ApplicationController::scanError,
+                this, [this](const QString& path, const QString& message)
+                {
+                    errorsLog_->appendPlainText(path + QStringLiteral(": ") + message);
+                });
+        connect(&controller_, &application::ApplicationController::analysisFinished,
+                this, &MainWindow::handleAnalysisFinished);
+    }
+
+    void MainWindow::chooseRootDirectory()
+    {
+        const QString selected = QFileDialog::getExistingDirectory(
+            this, QStringLiteral("Выберите каталог для анализа"),
+            rootPathEdit_->text());
+        if (!selected.isEmpty())
+        {
+            rootPathEdit_->setText(selected);
+        }
+    }
+
+    // Проверяет введённый путь и запускает контроллер; фактический обход
+    // выполняется в worker-потоке, поэтому окно остаётся отзывчивым.
+    void MainWindow::startAnalysis()
+    {
+        const QString selectedPath = rootPathEdit_->text().trimmed();
+        if (selectedPath.isEmpty())
+        {
+            QMessageBox::information(
+                this, QStringLiteral("Каталог не выбран"),
+                QStringLiteral("Укажите каталог, который нужно проанализировать."));
+            return;
+        }
+
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        const std::filesystem::path path = std::filesystem::u8path(encodedPath.constData());
+        if (!controller_.startAnalysis(path))
+        {
+            statusLabel_->setText(
+                QStringLiteral("Предыдущая задача ещё завершается. Повторите запуск через секунду."));
+            return;
+        }
+
+        // Убираем элементы дерева до обработки нового результата:
+        // они содержат указатели на узлы предыдущего AnalysisResult,
+        // который сканер сбрасывает в рабочем потоке.
+        clearDirectoryCache();
+        filesTable_->setRowCount(0);
+        directoryTree_->clear();
+        statisticsTable_->setRowCount(0);
+        updateChart(nullptr);
+        exportJsonButton_->setEnabled(false);
+        exportTxtButton_->setEnabled(false);
+
+        setBusy(true);
+        statusLabel_->setText(QStringLiteral("Подготовка к анализу…"));
+        currentPathLabel_->clear();
+    }
+
+    void MainWindow::cancelAnalysis()
+    {
+        controller_.cancelAnalysis();
+        cancelButton_->setEnabled(false);
+        statusLabel_->setText(QStringLiteral("Запрошена отмена анализа…"));
+    }
+
+    void MainWindow::exportJson()
+    {
+        const QString selected = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Экспорт результатов в JSON"),
+            QStringLiteral("analysis-result.json"),
+            QStringLiteral("JSON (*.json)"));
+        if (selected.isEmpty())
+        {
+            return;
+        }
+
+        const QByteArray encodedPath = selected.toUtf8();
+        const std::filesystem::path outputPath =
+            std::filesystem::u8path(encodedPath.constData());
+        std::string errorMessage;
+        if (!exportManager_.exportResult(
+                controller_.result(), outputPath,
+                domain::ExportFormat::Json, &errorMessage))
+        {
+            QMessageBox::warning(
+                this, QStringLiteral("Ошибка экспорта"),
+                QString::fromUtf8(errorMessage.c_str()));
+            return;
+        }
+
+        statusLabel_->setText(QStringLiteral("Результаты экспортированы в JSON."));
+    }
+
+    void MainWindow::exportTxt()
+    {
+        const QString selected = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Экспорт результатов в TXT"),
+            QStringLiteral("analysis-result.txt"),
+            QStringLiteral("Текстовые файлы (*.txt)"));
+        if (selected.isEmpty())
+        {
+            return;
+        }
+
+        const QByteArray encodedPath = selected.toUtf8();
+        const std::filesystem::path outputPath =
+            std::filesystem::u8path(encodedPath.constData());
+        std::string errorMessage;
+        if (!exportManager_.exportResult(
+                controller_.result(), outputPath,
+                domain::ExportFormat::Txt, &errorMessage))
+        {
+            QMessageBox::warning(
+                this, QStringLiteral("Ошибка экспорта"),
+                QString::fromUtf8(errorMessage.c_str()));
+            return;
+        }
+
+        statusLabel_->setText(QStringLiteral("Результаты экспортированы в TXT."));
+    }
+
+    void MainWindow::handleProgress(
+        const QString& path,
+        qulonglong processedFiles,
+        qulonglong processedDirectories)
+    {
+        currentPathLabel_->setText(
+            QStringLiteral("Обработано файлов: %1; каталогов: %2\n%3")
+                .arg(processedFiles)
+                .arg(processedDirectories)
+                .arg(path));
+    }
+
+    // Переводит интерфейс в неактивное состояние и явно различает
+    // полный результат, частичный результат после отмены и ошибку запуска.
+    void MainWindow::handleAnalysisFinished(int statusValue)
+    {
+        setBusy(false);
+        const auto status = static_cast<domain::ScanStatus>(statusValue);
+        switch (status)
+        {
+        case domain::ScanStatus::Completed:
+        {
+            populateTree();
+            const auto* root = controller_.result().getRoot();
+            statusLabel_->setText(root && !root->scanComplete
+                ? QStringLiteral("Анализ завершён с пропусками. См. журнал ошибок.")
+                : QStringLiteral("Анализ завершён."));
+            break;
+        }
+        case domain::ScanStatus::Cancelled:
+            statusLabel_->setText(QStringLiteral("Анализ отменён. Результат частичный."));
+            populateTree();
+            break;
+        case domain::ScanStatus::Failed:
+            statusLabel_->setText(QStringLiteral("Не удалось выполнить анализ. Проверьте путь и журнал ошибок."));
+            populateTree();
+            break;
+        case domain::ScanStatus::Idle:
+        case domain::ScanStatus::Running:
+            statusLabel_->setText(QStringLiteral("Получен некорректный итоговый статус."));
+            break;
+        }
+    }
+
+    // Централизованно блокирует конфликтующие действия во время анализа.
+    // Результат разрешено читать из GUI только после завершения worker-потока.
+    void MainWindow::setBusy(bool busy)
+    {
+        rootPathEdit_->setEnabled(!busy);
+        browseButton_->setEnabled(!busy);
+        runButton_->setEnabled(!busy);
+        cancelButton_->setEnabled(busy);
+        progressBar_->setVisible(busy);
+        // Пока рабочий поток выполняет анализ, result() изменяется сканером.
+        // Не читаем его из GUI до получения analysisFinished.
+        const bool hasResult = !busy && controller_.result().getRoot() != nullptr;
+        exportJsonButton_->setEnabled(hasResult);
+        exportTxtButton_->setEnabled(hasResult);
+    }
+
+    // Перестраивает дерево по снимку AnalysisResult, не запуская новый обход.
+    void MainWindow::populateTree()
+    {
+        directoryTree_->clear();
+        const domain::DirectoryNode* root = controller_.result().getRoot();
+        if (!root)
+        {
+            return;
+        }
+
+        appendDirectory(nullptr, root);
+        if (directoryTree_->topLevelItemCount() > 0)
+        {
+            directoryTree_->setCurrentItem(directoryTree_->topLevelItem(0));
+            directoryTree_->expandToDepth(1);
+        }
+    }
+
+    // Рекурсивно отображает узлы результата; путь хранится отдельно от подписи,
+    // поскольку имена каталогов могут совпадать в разных ветвях дерева.
+    void MainWindow::appendDirectory(
+        QTreeWidgetItem* parentItem,
+        const domain::DirectoryNode* node)
+    {
+        if (!node)
+        {
+            return;
+        }
+
+        const QString path = pathToQString(node->path);
+        const QString name = node->path.filename().empty()
+            ? path : pathToQString(node->path.filename());
+        auto* item = parentItem
+            ? new QTreeWidgetItem(parentItem)
+            : new QTreeWidgetItem(directoryTree_);
+        item->setText(0, name);
+        item->setToolTip(0, path);
+        item->setData(0, PathRole, path);
+        item->setData(0, Qt::UserRole, QVariant::fromValue<qulonglong>(
+            static_cast<qulonglong>(reinterpret_cast<quintptr>(node))));
+
+        for (const auto& child : node->children)
+        {
+            appendDirectory(item, child.get());
+        }
+    }
+
+    void MainWindow::showSelectedDirectory(QTreeWidgetItem* item)
+    {
+        if (!item)
+        {
+            statisticsTable_->setRowCount(0);
+            filesTable_->setRowCount(0);
+            updateChart(nullptr);
+            return;
+        }
+
+        const auto address = item->data(0, Qt::UserRole).toULongLong();
+        const auto* node = reinterpret_cast<const domain::DirectoryNode*>(
+            static_cast<quintptr>(address));
+        showStatistics(node);
+        updateChart(node);
+        const QString selectedPath = item->data(0, PathRole).toString();
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        showDirectoryContents(std::filesystem::u8path(encodedPath.constData()));
+    }
+
+    void MainWindow::clearDirectoryCache()
+    {
+        directoryCache_.clear();
+    }
+
+    void MainWindow::refreshDirectoryContents()
+    {
+        auto* item = directoryTree_->currentItem();
+        if (!item)
+        {
+            return;
+        }
+
+        const QString selectedPath = item->data(0, PathRole).toString();
+        const QByteArray encodedPath = selectedPath.toUtf8();
+        const auto directory = std::filesystem::u8path(encodedPath.constData());
+        directoryCache_.invalidate(directory);
+        showDirectoryContents(directory);
+    }
+
+    // Показывает непосредственные элементы выбранного каталога. Список
+    // может поступить из LRU-кэша или быть перечитан с диска; глобальная
+    // статистика при этом не пересчитывается.
+    void MainWindow::showDirectoryContents(const std::filesystem::path& directory)
+    {
+        filesTable_->setRowCount(0);
+        directoryCache_.setCurrentDirectory(directory);
+
+        const infrastructure::DirectoryCacheManager::FileList* cached =
+            directoryCache_.find(directory);
+        if (!cached)
+        {
+            infrastructure::DirectoryContentsReader reader(fileClassifier_);
+            auto result = reader.read(directory);
+            for (const auto& error : result.errors)
+            {
+                errorsLog_->appendPlainText(
+                    pathToQString(error.path) + QStringLiteral(": ") +
+                    QString::fromLocal8Bit(error.message.c_str()));
+            }
+
+            if (!result.opened)
+            {
+                return;
+            }
+
+            directoryCache_.store(directory, std::move(result.entries));
+            cached = directoryCache_.find(directory);
+        }
+
+        if (!cached)
+        {
+            return;
+        }
+
+        for (const auto& info : *cached)
+        {
+            const int row = filesTable_->rowCount();
+            filesTable_->insertRow(row);
+            const QString name = pathToQString(info.path.filename());
+            const QString type = info.type == domain::FileSystemObjectType::Directory
+                ? QStringLiteral("Каталог") : QStringLiteral("Файл");
+            QString subtreeSize = QStringLiteral("—");
+            QString subtreeCategories = QStringLiteral("—");
+            if (info.type == domain::FileSystemObjectType::Directory)
+            {
+                const auto* childNode = controller_.result().findNode(info.path);
+                if (childNode)
+                {
+                    subtreeSize = formatBytes(
+                        childNode->stats.direct.filesSizeBytes +
+                        childNode->stats.subtree.filesSizeBytes);
+                    QStringList summaries;
+                    for (const auto category : Categories)
+                    {
+                        const auto index = static_cast<std::size_t>(category);
+                        const quint64 count =
+                            childNode->stats.direct.categories.filesCount[index] +
+                            childNode->stats.subtree.categories.filesCount[index];
+                        if (count > 0)
+                        {
+                            summaries.append(QStringLiteral("%1: %2")
+                                .arg(categoryName(category)).arg(count));
+                        }
+                    }
+                    subtreeCategories = summaries.isEmpty()
+                        ? QStringLiteral("Нет файлов")
+                        : summaries.join(QStringLiteral("; "));
+                    if (!childNode->scanComplete)
+                    {
+                        subtreeCategories.prepend(QStringLiteral("НЕПОЛНО: "));
+                    }
+                }
+            }
+            const QStringList values = {
+                name, type,
+                info.type == domain::FileSystemObjectType::Directory
+                    ? QStringLiteral("—") : formatBytes(info.sizeBytes),
+                info.type == domain::FileSystemObjectType::Directory
+                    ? QStringLiteral("—") : categoryName(info.category),
+                subtreeSize, subtreeCategories
+            };
+            for (int column = 0; column < values.size(); ++column)
+            {
+                auto* cell = new QTableWidgetItem(values[column]);
+                cell->setToolTip(pathToQString(info.path));
+                filesTable_->setItem(row, column, cell);
+            }
+        }
+    }
+
+    // Формирует табличное представление direct/subtree статистики узла.
+    void MainWindow::showStatistics(const domain::DirectoryNode* node)
+    {
+        statisticsTable_->setRowCount(0);
+        if (!node)
+        {
+            return;
+        }
+
+        for (const auto category : Categories)
+        {
+            const auto index = static_cast<std::size_t>(category);
+            const auto& direct = node->stats.direct;
+            const auto& subtree = node->stats.subtree;
+            const quint64 directCount = direct.categories.filesCount[index];
+            const quint64 subtreeCount = subtree.categories.filesCount[index];
+            if (directCount == 0 && subtreeCount == 0)
+            {
+                continue;
+            }
+
+            const int row = statisticsTable_->rowCount();
+            statisticsTable_->insertRow(row);
+            const double directPercent = direct.filesSizeBytes == 0
+                ? 0.0
+                : 100.0 * static_cast<double>(
+                    direct.categories.sizesBytes[index]) /
+                    static_cast<double>(direct.filesSizeBytes);
+            const double subtreePercent = subtree.filesSizeBytes == 0
+                ? 0.0
+                : 100.0 * static_cast<double>(
+                    subtree.categories.sizesBytes[index]) /
+                    static_cast<double>(subtree.filesSizeBytes);
+            const QStringList values = {
+                categoryName(category),
+                QString::number(directCount),
+                formatBytes(direct.categories.sizesBytes[index]),
+                QStringLiteral("%1 %").arg(directPercent, 0, 'f', 2),
+                QString::number(subtreeCount),
+                formatBytes(subtree.categories.sizesBytes[index]),
+                QStringLiteral("%1 %").arg(subtreePercent, 0, 'f', 2)
+            };
+            for (int column = 0; column < values.size(); ++column)
+            {
+                statisticsTable_->setItem(row, column, new QTableWidgetItem(values[column]));
+            }
+        }
+
+        const int totalRow = statisticsTable_->rowCount();
+        statisticsTable_->insertRow(totalRow);
+        const QStringList totals = {
+            QStringLiteral("Всего"),
+            QString::number(node->stats.direct.filesCount),
+            formatBytes(node->stats.direct.filesSizeBytes),
+            node->stats.direct.filesSizeBytes == 0
+                ? QStringLiteral("0,00 %") : QStringLiteral("100,00 %"),
+            QString::number(node->stats.subtree.filesCount),
+            formatBytes(node->stats.subtree.filesSizeBytes),
+            node->stats.subtree.filesSizeBytes == 0
+                ? QStringLiteral("0,00 %") : QStringLiteral("100,00 %")
+        };
+        for (int column = 0; column < totals.size(); ++column)
+        {
+            auto* item = new QTableWidgetItem(totals[column]);
+            item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            statisticsTable_->setItem(totalRow, column, item);
+        }
+    }
+
+    // Диаграмма отражает размеры категорий, а не количество файлов.
+    // Точные значения выводятся при наведении, чтобы подписи секторов
+    // не перекрывали друг друга при большом числе категорий.
+    void MainWindow::updateChart(const domain::DirectoryNode* node)
+    {
+        auto* chart = new QtCharts::QChart();
+        chart->setTitle(QStringLiteral("Использование дискового пространства по категориям"));
+        chart->legend()->setAlignment(Qt::AlignRight);
+
+        if (node)
+        {
+            const auto scope = static_cast<visualization::StatisticsScope>(
+                chartScopeCombo_->currentIndex());
+            const auto values = visualizationModel_.buildCategoryValues(
+                node->stats, scope);
+            const quint64 scopeSize =
+                scope == visualization::StatisticsScope::Direct
+                    ? node->stats.direct.filesSizeBytes
+                    : scope == visualization::StatisticsScope::Subtree
+                        ? node->stats.subtree.filesSizeBytes
+                        : node->stats.direct.filesSizeBytes +
+                          node->stats.subtree.filesSizeBytes;
+            auto* series = new QtCharts::QPieSeries();
+            for (const auto& value : values)
+            {
+                if (value.sizeBytes == 0)
+                {
+                    continue;
+                }
+
+                QtCharts::QPieSlice* slice = series->append(
+                    categoryName(value.category),
+                    static_cast<qreal>(value.sizeBytes));
+                slice->setLabelVisible(false);
+                connect(slice, &QtCharts::QPieSlice::hovered, this,
+                    [this, value, scopeSize](bool hovered)
+                    {
+                        if (hovered)
+                        {
+                            statusLabel_->setText(
+                                QStringLiteral("%1: %2 (%3 %)")
+                                    .arg(categoryName(value.category))
+                                    .arg(formatBytes(value.sizeBytes))
+                                    .arg(scopeSize == 0
+                                        ? 0.0
+                                        : 100.0 * static_cast<double>(value.sizeBytes) /
+                                            static_cast<double>(scopeSize),
+                                         0, 'f', 2));
+                        }
+                    });
+            }
+
+            if (series->count() > 0)
+            {
+                chart->addSeries(series);
+            }
+            else
+            {
+                delete series;
+                chart->setTitle(QStringLiteral("В выбранной области нет файлов"));
+            }
+        }
+        else
+        {
+            chart->setTitle(QStringLiteral("Выберите каталог для диаграммы"));
+        }
+
+        QtCharts::QChart* previousChart = chartView_->chart();
+        chartView_->setChart(chart);
+        delete previousChart;
+    }
+
+    QString MainWindow::formatBytes(quint64 bytes)
+    {
+        static const char* units[] = {"Б", "КиБ", "МиБ", "ГиБ", "ТиБ"};
+        double value = static_cast<double>(bytes);
+        int unit = 0;
+        while (value >= 1024.0 && unit < 4)
+        {
+            value /= 1024.0;
+            ++unit;
+        }
+        return QStringLiteral("%1 %2").arg(value, 0, 'f', unit == 0 ? 0 : 2)
+            .arg(QString::fromUtf8(units[unit]));
+    }
+
+    QString MainWindow::categoryName(domain::FileCategory category)
+    {
+        switch (category)
+        {
+        case domain::FileCategory::Unknown: return QStringLiteral("Неизвестно");
+        case domain::FileCategory::Documents: return QStringLiteral("Документы");
+        case domain::FileCategory::Images: return QStringLiteral("Изображения");
+        case domain::FileCategory::Video: return QStringLiteral("Видео");
+        case domain::FileCategory::Audio: return QStringLiteral("Аудио");
+        case domain::FileCategory::Archives: return QStringLiteral("Архивы");
+        case domain::FileCategory::Executables: return QStringLiteral("Исполняемые файлы");
+        case domain::FileCategory::SourceCode: return QStringLiteral("Исходный код");
+        case domain::FileCategory::System: return QStringLiteral("Системные");
+        case domain::FileCategory::Other: return QStringLiteral("Прочие");
+        }
+        return QStringLiteral("Неизвестно");
+    }
+
+    QString MainWindow::pathToQString(const std::filesystem::path& path)
+    {
+        return QString::fromUtf8(path.u8string().c_str());
+    }
+}

@@ -5,6 +5,11 @@ project(DiskAnalyzer_TRPO_Kursovaya)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Treat source files and string literals as UTF-8 on MSVC (including Cyrillic UI text).
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
@@ -16,19 +21,52 @@ find_package(Qt5 REQUIRED COMPONENTS
 )
 
 add_executable(DiskAnalyzer_TRPO_Kursovaya
+    src/application/AnalysisPipeline.h
+    src/application/AnalysisPipeline.cpp
+    src/application/ApplicationController.h
+    src/application/ApplicationController.cpp
     src/main.cpp
+    src/ui/MainWindow.h
+    src/ui/MainWindow.cpp
 
     src/domain/enums/FileCategory.h
     src/domain/enums/ScanStatus.h
     src/domain/enums/ExportFormat.h
     src/domain/enums/FileSystemObjectType.h
 
+    src/domain/interfaces/IFileClassifier.h
+    src/domain/interfaces/IDirectoryScanner.h
+    src/domain/interfaces/IDirectoryAggregator.h
+
     src/domain/models/FileInfo.h
     src/domain/models/DirectoryStatistics.h
     src/domain/models/DirectoryStatistics.cpp
     src/domain/models/DirectoryNode.h
+    src/domain/models/DirectoryNode.cpp
     src/domain/models/AnalysisResult.h
- "src/domain/models/DirectoryNode.cpp" "src/domain/models/AnalysisResult.cpp")
+    src/domain/models/AnalysisResult.cpp
+
+    src/infrastructure/classifier/FileClassifier.h
+    src/infrastructure/classifier/FileClassifier.cpp
+
+    src/infrastructure/scanner/DirectoryScanner.h
+    src/infrastructure/scanner/DirectoryScanner.cpp
+
+    src/infrastructure/aggregator/DirectoryAggregator.h
+    src/infrastructure/aggregator/DirectoryAggregator.cpp
+    src/infrastructure/cache/DirectoryCacheManager.h
+    src/infrastructure/cache/DirectoryCacheManager.cpp
+    src/infrastructure/reader/DirectoryContentsReader.h
+    src/infrastructure/reader/DirectoryContentsReader.cpp
+    src/infrastructure/export/ExportManager.h
+    src/infrastructure/export/ExportManager.cpp
+    src/visualization/models/VisualizationModel.h
+    src/visualization/models/VisualizationModel.cpp
+)
+
+if(WIN32)
+    set_target_properties(DiskAnalyzer_TRPO_Kursovaya PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
     Qt5::Core
@@ -58,4 +96,127 @@ if(WIN32)
         COMMENT "Deploying Qt runtime..."
     )
 
+endif()
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(AnalysisPipelineIntegrationTest
+        tests/AnalysisPipelineIntegrationTest.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+        src/application/AnalysisPipeline.cpp
+    )
+
+    target_include_directories(AnalysisPipelineIntegrationTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME AnalysisPipelineIntegrationTest
+        COMMAND AnalysisPipelineIntegrationTest
+    )
+
+    add_executable(ExportManagerTest
+        tests/ExportManagerTest.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+        src/infrastructure/export/ExportManager.cpp
+        src/application/AnalysisPipeline.cpp
+    )
+
+    target_include_directories(ExportManagerTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME ExportManagerTest
+        COMMAND ExportManagerTest
+    )
+
+    add_executable(ApplicationControllerTest
+        tests/ApplicationControllerTest.cpp
+
+        src/application/ApplicationController.h
+        src/application/ApplicationController.cpp
+        src/application/AnalysisPipeline.cpp
+
+        src/domain/models/DirectoryStatistics.cpp
+        src/domain/models/DirectoryNode.cpp
+        src/domain/models/AnalysisResult.cpp
+
+        src/infrastructure/classifier/FileClassifier.cpp
+        src/infrastructure/scanner/DirectoryScanner.cpp
+        src/infrastructure/aggregator/DirectoryAggregator.cpp
+    )
+
+    target_include_directories(ApplicationControllerTest PRIVATE
+        src
+    )
+
+    target_link_libraries(ApplicationControllerTest PRIVATE
+        Qt5::Core
+    )
+
+    add_test(
+        NAME ApplicationControllerTest
+        COMMAND ApplicationControllerTest
+    )
+
+    add_executable(VisualizationModelTest
+        tests/VisualizationModelTest.cpp
+        src/domain/models/DirectoryStatistics.cpp
+        src/visualization/models/VisualizationModel.cpp
+    )
+
+    target_include_directories(VisualizationModelTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME VisualizationModelTest
+        COMMAND VisualizationModelTest
+    )
+
+    add_executable(DirectoryCacheManagerTest
+        tests/DirectoryCacheManagerTest.cpp
+        src/infrastructure/cache/DirectoryCacheManager.h
+        src/infrastructure/cache/DirectoryCacheManager.cpp
+    )
+
+    target_include_directories(DirectoryCacheManagerTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME DirectoryCacheManagerTest
+        COMMAND DirectoryCacheManagerTest
+    )
+
+    add_executable(DirectoryContentsReaderTest
+        tests/DirectoryContentsReaderTest.cpp
+        src/infrastructure/reader/DirectoryContentsReader.cpp
+        src/infrastructure/classifier/FileClassifier.cpp
+    )
+
+    target_include_directories(DirectoryContentsReaderTest PRIVATE
+        src
+    )
+
+    add_test(
+        NAME DirectoryContentsReaderTest
+        COMMAND DirectoryContentsReaderTest
+    )
 endif()
