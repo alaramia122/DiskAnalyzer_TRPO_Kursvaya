@@ -5,6 +5,11 @@ project(DiskAnalyzer_TRPO_Kursovaya)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Treat source files and string literals as UTF-8 on MSVC (including Cyrillic UI text).
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
