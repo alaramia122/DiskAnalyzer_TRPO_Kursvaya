@@ -18,6 +18,7 @@ namespace domain {
     public:
         std::filesystem::path path;           ///< Полный путь к директории
         DirectoryStatistics stats;            ///< Статистика директории
+        bool scanComplete = true;             ///< Все элементы каталога удалось проверить
 
         DirectoryNode* parent = nullptr;      ///< Указатель на родителя
         std::vector<std::unique_ptr<DirectoryNode>> children; ///< Дочерние директории
