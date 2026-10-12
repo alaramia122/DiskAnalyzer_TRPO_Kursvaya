@@ -51,6 +51,10 @@ namespace infrastructure
                  current->children)
             {
                 current->stats.mergeSubtree(child->stats);
+                if (!child->scanComplete)
+                {
+                    current->scanComplete = false;
+                }
             }
         }
 
