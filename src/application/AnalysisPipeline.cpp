@@ -10,6 +10,9 @@ namespace application
     {
     }
 
+    // Конвейер задаёт порядок операций и передаёт callbacks сканеру.
+    // Агрегация выполняется только после полного обхода; при отмене или
+    // ошибке сканирования частичный результат не выдаётся за завершённый.
     domain::ScanStatus AnalysisPipeline::run(
         const std::filesystem::path& rootPath,
         domain::AnalysisResult& result,
