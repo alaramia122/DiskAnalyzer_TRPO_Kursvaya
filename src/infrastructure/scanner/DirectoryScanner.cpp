@@ -79,6 +79,7 @@ namespace infrastructure
 
         if (rootIteratorError)
         {
+            result.getRoot()->scanComplete = false;
             if (errorCallback)
             {
                 errorCallback({
@@ -132,6 +133,7 @@ namespace infrastructure
 
             if (incrementError)
             {
+                frame.node->scanComplete = false;
                 if (errorCallback)
                 {
                     errorCallback({
@@ -154,6 +156,7 @@ namespace infrastructure
 
             if (linkStatusError)
             {
+                frame.node->scanComplete = false;
                 if (errorCallback)
                 {
                     errorCallback({
@@ -172,6 +175,7 @@ namespace infrastructure
 
             if (targetStatusError)
             {
+                frame.node->scanComplete = false;
                 if (errorCallback)
                 {
                     errorCallback({
@@ -207,6 +211,7 @@ namespace infrastructure
 
                     if (childIteratorError)
                     {
+                        child->scanComplete = false;
                         if (errorCallback)
                         {
                             errorCallback({
@@ -233,6 +238,7 @@ namespace infrastructure
 
                 if (fileSizeError)
                 {
+                    frame.node->scanComplete = false;
                     if (errorCallback)
                     {
                         errorCallback({
