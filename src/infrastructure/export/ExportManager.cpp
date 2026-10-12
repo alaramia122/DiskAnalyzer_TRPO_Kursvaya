@@ -32,6 +32,8 @@ namespace
         return path.u8string();
     }
 
+    // Экранируем управляющие символы и кавычки по правилам JSON.
+    // Остальные байты UTF-8 выводятся без преобразования.
     void writeJsonString(std::ostream& output, const std::string& value)
     {
         output << '"';
@@ -82,6 +84,8 @@ namespace
         output << "\n  ]\n}";
     }
 
+    // Сериализуем узел вместе с direct/subtree статистикой и дочерними
+    // каталогами. Рекурсия отражает структуру дерева AnalysisResult.
     void writeDirectoryJson(
         std::ostream& output,
         const domain::DirectoryNode& node,
@@ -142,6 +146,8 @@ namespace
 
 namespace infrastructure
 {
+    // Проверяем входные данные до открытия файла, чтобы не создавать
+    // пустой/обрезанный файл при заведомо недопустимом запросе экспорта.
     bool ExportManager::exportResult(
         const domain::AnalysisResult& result,
         const std::filesystem::path& outputPath,
