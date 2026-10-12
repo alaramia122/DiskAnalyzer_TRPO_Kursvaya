@@ -20,11 +20,7 @@ find_package(Qt5 REQUIRED COMPONENTS
     Charts
 )
 
-if(WIN32)
-    add_executable(DiskAnalyzer_TRPO_Kursovaya WIN32
-else()
-    add_executable(DiskAnalyzer_TRPO_Kursovaya
-endif()
+add_executable(DiskAnalyzer_TRPO_Kursovaya
     src/application/AnalysisPipeline.h
     src/application/AnalysisPipeline.cpp
     src/application/ApplicationController.h
@@ -67,6 +63,10 @@ endif()
     src/visualization/models/VisualizationModel.h
     src/visualization/models/VisualizationModel.cpp
 )
+
+if(WIN32)
+    set_target_properties(DiskAnalyzer_TRPO_Kursovaya PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 
 target_link_libraries(DiskAnalyzer_TRPO_Kursovaya PRIVATE
     Qt5::Core
