@@ -669,15 +669,22 @@ namespace ui
                     categoryName(value.category),
                     static_cast<qreal>(value.sizeBytes));
                 slice->setLabelVisible(false);
-                slice->setToolTip(
-                    QStringLiteral("%1: %2 (%3 %)")
-                        .arg(categoryName(value.category))
-                        .arg(formatBytes(value.sizeBytes))
-                        .arg(scopeSize == 0
-                            ? 0.0
-                            : 100.0 * static_cast<double>(value.sizeBytes) /
-                                static_cast<double>(scopeSize),
-                             0, 'f', 2));
+                connect(slice, &QtCharts::QPieSlice::hovered, this,
+                    [this, value, scopeSize](bool hovered)
+                    {
+                        if (hovered)
+                        {
+                            statusLabel_->setText(
+                                QStringLiteral("%1: %2 (%3 %)")
+                                    .arg(categoryName(value.category))
+                                    .arg(formatBytes(value.sizeBytes))
+                                    .arg(scopeSize == 0
+                                        ? 0.0
+                                        : 100.0 * static_cast<double>(value.sizeBytes) /
+                                            static_cast<double>(scopeSize),
+                                         0, 'f', 2));
+                        }
+                    });
             }
 
             if (series->count() > 0)
