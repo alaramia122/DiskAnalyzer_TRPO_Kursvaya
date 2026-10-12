@@ -42,6 +42,9 @@ namespace application
         cancellationRequested_.store(false);
         running_.store(true);
 
+        // Файловый обход выполняется вне GUI-потока. Все сигналы Qt
+        // ставятся в очередь главного потока, чтобы обработчики интерфейса
+        // не вызывались напрямую из worker-потока.
         worker_ = std::thread([this, rootPath]()
         {
             QMetaObject::invokeMethod(
@@ -126,6 +129,8 @@ namespace application
                 status = domain::ScanStatus::Failed;
             }
 
+            // Сначала публикуем итоговый статус, затем разрешаем новый запуск:
+            // GUI должен успеть обработать analysisFinished и прочитать result_.
             completionPending_.store(true);
             running_.store(false);
 
