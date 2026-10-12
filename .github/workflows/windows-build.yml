@@ -1,4 +1,5 @@
 name: Windows build and tests
+# Rebuild the portable package after source-encoding fixes.
 
 on:
   push:
