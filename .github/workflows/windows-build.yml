@@ -1,19 +1,25 @@
 name: Windows build and tests
-# Rebuild the portable package after source-encoding fixes.
 
 on:
   push:
     branches:
       - '**'
+    tags:
+      - 'v*'
   pull_request:
     branches:
-      - main
+      - master
       - implementation/scanner-and-classifier
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-windows:
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,3 +78,10 @@ jobs:
           path: DiskAnalyzer-Windows-x64.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DiskAnalyzer-Windows-x64.zip
+          generate_release_notes: true
