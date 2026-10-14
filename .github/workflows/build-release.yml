@@ -1,0 +1,219 @@
+name: Build, test and package
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: disk-analyzer-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtcharts'
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Prepare and smoke-test portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem -Path build -Recurse -Filter 'DiskAnalyzer_TRPO_Kursovaya.exe' |
+            Where-Object { $_.FullName -match '\\Release\\' } |
+            Select-Object -First 1
+          if (-not $exe) {
+            throw 'Release executable was not found.'
+          }
+          $windeploy = Get-Command windeployqt.exe -ErrorAction SilentlyContinue
+          if (-not $windeploy) {
+            throw 'Could not locate windeployqt.exe on PATH.'
+          }
+          & $windeploy.Source --release --no-translations --no-system-d3d-compiler $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+
+          $package = Join-Path $PWD 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item (Join-Path $exe.Directory.FullName '*') $package -Recurse -Force
+          @(
+            'DiskAnalyzer TRPO — portable Windows build',
+            '',
+            'Run DiskAnalyzer_TRPO_Kursovaya.exe.',
+            'No compiler or Qt installation is required.',
+            'This package includes the Qt runtime libraries detected by windeployqt.'
+          ) | Set-Content (Join-Path $package 'README-RUN.txt') -Encoding UTF8
+
+          $app = Join-Path $package 'DiskAnalyzer_TRPO_Kursovaya.exe'
+          $process = Start-Process -FilePath $app -WorkingDirectory $package -PassThru
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "Portable GUI application exited during smoke test (code $($process.ExitCode))."
+          }
+          Stop-Process -Id $process.Id -Force
+
+          Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $PWD 'DiskAnalyzer-Windows-x64.zip') -Force
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-Windows-x64
+          path: DiskAnalyzer-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  build-linux:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build qtbase5-dev libqt5charts5-dev \
+            libfuse2 xvfb librsvg2-bin
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Prepare AppDir
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          install -m 0755 build/DiskAnalyzer_TRPO_Kursovaya AppDir/usr/bin/DiskAnalyzer_TRPO_Kursovaya
+
+          cat > AppDir/usr/share/applications/disk-analyzer.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Disk Analyzer
+          Comment=Analyze disk usage by directory and file category
+          Exec=DiskAnalyzer_TRPO_Kursovaya
+          Icon=disk-analyzer
+          Categories=Utility;
+          Terminal=false
+          EOF
+
+          cat > disk-analyzer.svg <<'EOF'
+          <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+            <rect x="20" y="20" width="216" height="216" rx="32" fill="#245b8f"/>
+            <circle cx="128" cy="128" r="72" fill="#ffffff"/>
+            <path d="M128 56 A72 72 0 0 1 200 128 L128 128 Z" fill="#49a078"/>
+            <path d="M128 128 L200 128 A72 72 0 0 1 92 194 Z" fill="#f0b44c"/>
+            <circle cx="128" cy="128" r="27" fill="#245b8f"/>
+          </svg>
+          EOF
+          rsvg-convert -w 256 -h 256 disk-analyzer.svg -o AppDir/usr/share/icons/hicolor/256x256/apps/disk-analyzer.png
+
+      - name: Download linuxdeployqt
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage \
+            --output linuxdeployqt.AppImage
+          chmod +x linuxdeployqt.AppImage
+
+      - name: Bundle Qt and create AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./linuxdeployqt.AppImage --appimage-extract-and-run \
+            AppDir/usr/share/applications/disk-analyzer.desktop \
+            -appimage -bundle-non-qt-libs -no-translations
+          appimage="$(find . -maxdepth 1 -type f -name '*.AppImage' ! -name 'linuxdeployqt.AppImage' -print -quit)"
+          test -n "$appimage"
+          cp "$appimage" DiskAnalyzer-Linux-x86_64.AppImage
+          chmod +x DiskAnalyzer-Linux-x86_64.AppImage
+
+      - name: Smoke-test portable Linux package
+        shell: bash
+        run: |
+          set +e
+          xvfb-run -a timeout --kill-after=2s 10s ./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "Expected GUI application to stay open until timeout; exit code: $status"
+            exit 1
+          fi
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-Linux-x86_64
+          path: DiskAnalyzer-Linux-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, 'Release v1.0.0'))
+    needs:
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: DiskAnalyzer-Windows-x64
+          path: dist/windows
+
+      - name: Download Linux package
+        uses: actions/download-artifact@v4
+        with:
+          name: DiskAnalyzer-Linux-x86_64
+          path: dist/linux
+
+      - name: Publish both platform packages
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/windows/DiskAnalyzer-Windows-x64.zip
+            dist/linux/DiskAnalyzer-Linux-x86_64.AppImage
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          target_commitish: master
+          generate_release_notes: true
+          fail_on_unmatched_files: true
