@@ -1,0 +1,78 @@
+name: Linux build and tests
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - implementation/scanner-and-classifier
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build qtbase5-dev libqt5charts5-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Prepare Linux package
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          install -m 0755 build/DiskAnalyzer_TRPO_Kursovaya package/DiskAnalyzer_TRPO_Kursovaya
+          cat > package/README-RUN.txt <<'EOF'
+          Disk Analyzer — Linux x86_64 build
+
+          Run from a terminal:
+            ./DiskAnalyzer_TRPO_Kursovaya
+
+          Runtime dependencies:
+            Qt 5 libraries: Core, Widgets, Charts
+            Qt platform plugin for the active display system (usually xcb on X11)
+
+          On Ubuntu/Debian, if the required Qt 5 runtime libraries are missing, install:
+            sudo apt install libqt5core5a libqt5widgets5 libqt5charts5 libqt5gui5
+
+          This archive contains the application executable but does not bundle system Qt libraries.
+          The package is built and tested on Ubuntu 22.04 x86_64.
+          EOF
+          tar -czf DiskAnalyzer-Linux-x86_64.tar.gz -C package .
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-Linux-x86_64
+          path: DiskAnalyzer-Linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DiskAnalyzer-Linux-x86_64.tar.gz
+          generate_release_notes: true
