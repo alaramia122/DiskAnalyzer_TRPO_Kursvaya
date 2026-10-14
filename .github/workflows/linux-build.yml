@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          QT_QPA_PLATFORM=offscreen timeout 10s ./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
+          timeout 10s xvfb-run -a ./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
           status=$?
           set -e
           if [ "$status" -ne 124 ]; then
