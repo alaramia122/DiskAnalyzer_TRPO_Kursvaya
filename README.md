@@ -5,15 +5,19 @@ Disk Analyzer — оконное приложение на C++17 для анал
 - **Язык:** C++17
 - **GUI:** Qt 5 (Core, Widgets, Charts)
 - **Сборка:** CMake
-- **Готовая сборка:** Windows x64, переносимый ZIP-пакет
+- **Платформы:** Windows x64 и Linux x86_64
+- **Пакеты:** Windows ZIP с развёрнутыми Qt runtime-библиотеками; Linux TAR.GZ с исполняемым файлом и системными зависимостями Qt 5
 
 ## Скачать приложение
 
-**[Открыть страницу загрузок Disk Analyzer (GitHub Releases)](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursovaya/releases)**
+**[Открыть страницу загрузок Disk Analyzer (GitHub Releases)](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases)**
 
-В Releases выберите архив `DiskAnalyzer-Windows-x64.zip` нужного выпуска, распакуйте его и запустите `DiskAnalyzer_TRPO_Kursovaya.exe`. Компилятор, Visual Studio и отдельная установка Qt для запуска не требуются: пакет включает Qt runtime-библиотеки, обнаруженные `windeployqt`.
+В Releases выберите архив для своей платформы:
 
-Если выпуск ещё не опубликован, можно скачать временный артефакт из [GitHub Actions](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursovaya/actions), открыв успешный запуск **Windows build and tests**. Артефакты Actions хранятся ограниченное время; постоянная пользовательская ссылка — Releases.
+- **Windows:** `DiskAnalyzer-Windows-x64.zip`. Распакуйте и запустите `DiskAnalyzer_TRPO_Kursovaya.exe`. Компилятор, Visual Studio и отдельная установка Qt для запуска не требуются.
+- **Linux x86_64:** `DiskAnalyzer-Linux-x86_64.tar.gz`. Распакуйте архив и запустите `./DiskAnalyzer_TRPO_Kursovaya`. Архив содержит исполняемый файл, но не включает системные Qt-библиотеки; на целевой системе должны быть установлены Qt 5 Core, Widgets, Charts и подходящий платформенный плагин.
+
+Если выпуск ещё не опубликован, можно скачать временный артефакт из [GitHub Actions](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/actions), открыв успешный запуск **Windows build and tests** или **Linux build and tests**. Артефакты Actions хранятся ограниченное время; постоянная пользовательская ссылка — Releases.
 
 ## Возможности
 
@@ -27,11 +31,11 @@ Disk Analyzer — оконное приложение на C++17 для анал
 - Навигация по результатам без повторного полного сканирования.
 - Обновление списка непосредственного содержимого каталога.
 - Экспорт агрегированных результатов в JSON и TXT.
-- Автоматические тесты и подготовка переносимой сборки через GitHub Actions.
+- Автоматические тесты и сборка через GitHub Actions.
 
 ## Быстрый старт
 
-1. Запустите `DiskAnalyzer_TRPO_Kursovaya.exe`.
+1. Запустите приложение для своей платформы.
 2. Укажите путь к каталогу или нажмите **«Обзор…»**.
 3. Нажмите **«Начать анализ»**.
 4. Выбирайте каталоги в дереве для просмотра статистики.
@@ -50,7 +54,21 @@ Disk Analyzer — оконное приложение на C++17 для анал
 
 ## Сборка из исходного кода
 
-Требуются CMake 3.20+, компилятор C++17 и Qt 5 с компонентами Core, Widgets и Charts. На Windows сборка Qt должна соответствовать компилятору (например, Qt MSVC x64 для MSVC). Нельзя смешивать Qt для MinGW и MSVC.
+Требуются CMake 3.20+, компилятор C++17 и Qt 5 с компонентами Core, Widgets и Charts.
+
+### Linux (Ubuntu/Debian)
+
+```sh
+sudo apt update
+sudo apt install build-essential cmake qtbase5-dev libqt5charts5-dev
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+### Windows
+
+Используйте Qt, собранный для выбранного компилятора (например, Qt MSVC x64 для MSVC). Не смешивайте Qt для MinGW и MSVC.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
