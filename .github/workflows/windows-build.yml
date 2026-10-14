@@ -69,6 +69,15 @@ jobs:
             'No compiler or Qt installation is required.',
             'This package includes the Qt runtime libraries detected by windeployqt.'
           ) | Set-Content (Join-Path $package 'README-RUN.txt') -Encoding UTF8
+          $app = Join-Path $package 'DiskAnalyzer_TRPO_Kursovaya.exe'
+          $process = Start-Process -FilePath $app -WorkingDirectory $package -PassThru
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "Portable GUI application exited during smoke test (code $($process.ExitCode))."
+          }
+          Stop-Process -Id $process.Id -Force
+
           Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $PWD 'DiskAnalyzer-Windows-x64.zip') -Force
 
       - name: Upload portable application
