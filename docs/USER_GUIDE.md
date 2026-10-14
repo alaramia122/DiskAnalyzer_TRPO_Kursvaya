@@ -18,19 +18,22 @@ Disk Analyzer анализирует выбранный каталог файл�
 
 ### Linux x86_64
 
-1. Скачайте `DiskAnalyzer-Linux-x86_64.tar.gz` со страницы [GitHub Releases](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases) либо из успешного запуска Linux workflow в [GitHub Actions](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/actions).
-2. Распакуйте архив.
-3. Убедитесь, что в системе доступны Qt 5 Core, Widgets, Charts и платформенный плагин Qt для графической среды.
-4. Запустите приложение из терминала: `./DiskAnalyzer_TRPO_Kursovaya`.
+1. Скачайте `DiskAnalyzer-Linux-x86_64.AppImage` со страницы [GitHub Releases](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases) либо из успешного запуска Linux workflow в [GitHub Actions](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/actions).
+2. Перейдите в каталог загрузки и разрешите запуск файла:
+   ```sh
+   chmod +x DiskAnalyzer-Linux-x86_64.AppImage
+   ```
+3. Запустите:
+   ```sh
+   ./DiskAnalyzer-Linux-x86_64.AppImage
+   ```
 
-Linux-архив содержит исполняемый файл, но не включает системные Qt-библиотеки. Для Ubuntu/Debian при отсутствии зависимостей можно установить их командой:
-
+AppImage включает Qt runtime-библиотеки и плагины. Системные библиотеки графической среды должны быть доступны в ОС. Если AppImage не запускается из-за отсутствия FUSE, попробуйте режим извлечения и запуска:
 ```sh
-sudo apt update
-sudo apt install libqt5core5a libqt5widgets5 libqt5charts5 libqt5gui5
+./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
 ```
 
-Сборка CI выполняется на Ubuntu 22.04 x86_64; работа на других дистрибутивах зависит от совместимости системных библиотек и графического окружения.
+Пакет собирается в Ubuntu 22.04 x86_64. Совместимость с другими дистрибутивами зависит от их системных библиотек и графического окружения.
 
 ## 3. Запуск из среды разработки
 
