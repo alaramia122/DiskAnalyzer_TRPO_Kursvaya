@@ -11,6 +11,10 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: disk-analyzer-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
