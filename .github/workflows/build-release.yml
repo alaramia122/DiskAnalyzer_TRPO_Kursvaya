@@ -169,10 +169,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout --kill-after=2s 10s xvfb-run -a ./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
+          xvfb-run -a timeout --kill-after=2s 10s ./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run
           status=$?
           set -e
-          if [ "$status" -ne 124 ] && [ "$status" -ne 137 ]; then
+          if [ "$status" -ne 124 ]; then
             echo "Expected GUI application to stay open until timeout; exit code: $status"
             exit 1
           fi
