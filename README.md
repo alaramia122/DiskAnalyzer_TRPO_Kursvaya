@@ -10,7 +10,9 @@ Disk Analyzer — оконное приложение на C++17 для анал
 
 ## Скачать приложение
 
-**[Открыть страницу загрузок Disk Analyzer (GitHub Releases)](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases)**
+**[Скачать последнюю стабильную версию (GitHub Releases)](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases/latest)**
+
+**[Все выпуски и версии](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/releases)**
 
 В Releases выберите архив для своей платформы:
 
