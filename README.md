@@ -6,7 +6,7 @@ Disk Analyzer — оконное приложение на C++17 для анал
 - **GUI:** Qt 5 (Core, Widgets, Charts)
 - **Сборка:** CMake
 - **Платформы:** Windows x64 и Linux x86_64
-- **Пакеты:** Windows ZIP с развёрнутыми Qt runtime-библиотеками; Linux TAR.GZ с исполняемым файлом и системными зависимостями Qt 5
+- **Пакеты:** Windows ZIP с развёрнутыми Qt runtime-библиотеками; Linux AppImage с упакованными Qt-библиотеками и плагинами
 
 ## Скачать приложение
 
@@ -14,8 +14,13 @@ Disk Analyzer — оконное приложение на C++17 для анал
 
 В Releases выберите архив для своей платформы:
 
-- **Windows:** `DiskAnalyzer-Windows-x64.zip`. Распакуйте и запустите `DiskAnalyzer_TRPO_Kursovaya.exe`. Компилятор, Visual Studio и отдельная установка Qt для запуска не требуются.
-- **Linux x86_64:** `DiskAnalyzer-Linux-x86_64.tar.gz`. Распакуйте архив и запустите `./DiskAnalyzer_TRPO_Kursovaya`. Архив содержит исполняемый файл, но не включает системные Qt-библиотеки; на целевой системе должны быть установлены Qt 5 Core, Widgets, Charts и подходящий платформенный плагин.
+- **Windows x64:** `DiskAnalyzer-Windows-x64.zip`. Распакуйте архив и запустите `DiskAnalyzer_TRPO_Kursovaya.exe`. Компилятор, Visual Studio и отдельная установка Qt для запуска не требуются.
+- **Linux x86_64:** `DiskAnalyzer-Linux-x86_64.AppImage`. Скачайте файл, разрешите исполнение и запустите:
+  ```sh
+  chmod +x DiskAnalyzer-Linux-x86_64.AppImage
+  ./DiskAnalyzer-Linux-x86_64.AppImage
+  ```
+  AppImage включает Qt runtime-библиотеки и плагины. На системе всё ещё нужны базовые графические системные библиотеки, совместимые с окружением сборки. Если запуск AppImage блокируется поддержкой FUSE, попробуйте `./DiskAnalyzer-Linux-x86_64.AppImage --appimage-extract-and-run`.
 
 Если выпуск ещё не опубликован, можно скачать временный артефакт из [GitHub Actions](https://github.com/alaramia122/DiskAnalyzer_TRPO_Kursvaya/actions), открыв успешный запуск **Windows build and tests** или **Linux build and tests**. Артефакты Actions хранятся ограниченное время; постоянная пользовательская ссылка — Releases.
 
@@ -70,10 +75,10 @@ ctest --test-dir build --output-on-failure
 
 Используйте Qt, собранный для выбранного компилятора (например, Qt MSVC x64 для MSVC). Не смешивайте Qt для MinGW и MSVC.
 
-```sh
+```powershell
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake --build build --config Debug --parallel
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
 ## Документация
@@ -82,7 +87,7 @@ ctest --test-dir build --output-on-failure
 - [Архитектура и потоки данных](docs/ARCHITECTURE.md)
 - [Проверки и тестирование](docs/TESTING.md)
 - [Черновик пояснительной записки](docs/REPORT_DRAFT.md)
-- [Итоговый отчёт](docs/FINAL_REPORT.md)
+- [Итоговый технический отчёт](docs/FINAL_REPORT.md)
 
 ## Ограничения
 
