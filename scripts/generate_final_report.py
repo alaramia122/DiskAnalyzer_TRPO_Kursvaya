@@ -539,34 +539,51 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
         groups[group].sort(key=lambda row: (row[0].lower(), row[-1].lower()))
     return groups
 
-def add_table_of_contents(doc: Document) -> None:
-    """Insert a Word TOC field and request field refresh when the document opens."""
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
+def insert_static_table_of_contents(doc: Document) -> None:
+    """Insert a visible table of contents based on actual report headings."""
+    headings: list[tuple[str, int]] = []
+    for paragraph in doc.paragraphs:
+        style_name = paragraph.style.name if paragraph.style is not None else ""
+        if style_name not in {"Heading 1", "Heading 2", "Heading 3"}:
+            continue
+        title = paragraph.text.strip()
+        if not title or re.match(r"^\d+\. (src/|tests/|CMakeLists|\.github/)", title):
+            continue
+        level = int(style_name.split()[-1])
+        headings.append((title, level))
 
+    assignment = next((p._p for p in doc.paragraphs if p.text.strip() == "Задание"), None)
+    if assignment is None:
+        raise RuntimeError("Cannot insert table of contents: section 'Задание' not found")
+
+    elements = []
     title = doc.add_paragraph()
     title.style = "Title"
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.add_run("Оглавление")
-    paragraph = doc.add_paragraph()
-    run = paragraph.add_run()
-    begin = OxmlElement("w:fldChar")
-    begin.set(qn("w:fldCharType"), "begin")
-    instruction = OxmlElement("w:instrText")
-    instruction.set(qn("xml:space"), "preserve")
-    instruction.text = ' TOC \\o "1-2" \\h \\z \\u '
-    separate = OxmlElement("w:fldChar")
-    separate.set(qn("w:fldCharType"), "separate")
-    placeholder = OxmlElement("w:t")
-    placeholder.text = "Оглавление будет сформировано при обновлении полей документа в Microsoft Word или LibreOffice."
-    end = OxmlElement("w:fldChar")
-    end.set(qn("w:fldCharType"), "end")
-    run._r.append(begin)
-    run._r.append(instruction)
-    run._r.append(separate)
-    run._r.append(placeholder)
-    run._r.append(end)
-    doc.add_page_break()
+    elements.append(title._p)
+
+    for text, level in headings:
+        paragraph = doc.add_paragraph()
+        paragraph.paragraph_format.space_after = Pt(2)
+        paragraph.paragraph_format.left_indent = Cm(0.6 * (level - 1))
+        paragraph.paragraph_format.keep_with_next = False
+        run = paragraph.add_run(text)
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(10 if level > 1 else 11)
+        if level == 1:
+            run.bold = True
+        elements.append(paragraph._p)
+
+    page_break = doc.add_paragraph()
+    page_break.add_run().add_break()
+    page_break.paragraph_format.page_break_before = True
+    elements.append(page_break._p)
+
+    # Move the newly created paragraphs from the document end to the front matter.
+    for element in reversed(elements):
+        assignment.addprevious(element)
+
 
 
 def add_title_page(doc: Document) -> None:
@@ -825,7 +842,6 @@ def main() -> int:
     for section in doc.sections:
         add_page_number(section)
     add_title_page(doc)
-    add_table_of_contents(doc)
 
     doc.add_heading("Задание", level=1)
     add_paragraph(doc, markdown_quote_text(ASSIGNMENT))
@@ -834,6 +850,7 @@ def main() -> int:
     add_listing(doc, sources)
     add_testing(doc, sources)
     add_conclusion(doc)
+    insert_static_table_of_contents(doc)
 
     doc.core_properties.title = "Отчёт по курсовой работе: Disk Analyzer"
     doc.core_properties.subject = "ТРПО, C++17, Qt 5"
