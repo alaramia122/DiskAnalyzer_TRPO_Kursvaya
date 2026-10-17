@@ -1,6 +1,12 @@
 name: Generate final coursework report
 
 on:
+  push:
+    branches:
+      - docs/final-report-generation-kit
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
