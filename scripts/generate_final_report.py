@@ -282,6 +282,37 @@ def _describe_unit(name: str, kind: str, file_path: Path) -> str:
     return f"Программная единица «{name}», объявленная в {relative(file_path)}."
 
 
+def _extract_type_members(text: str, match: re.Match) -> list[str]:
+    """Extract simple data-member declarations from a class/struct body."""
+    opening = text.find("{", match.end())
+    if opening < 0:
+        return []
+    depth = 0
+    closing = -1
+    for index in range(opening, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                closing = index
+                break
+    if closing < 0:
+        return []
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", text[opening + 1:closing], flags=re.S)
+    members: list[str] = []
+    for statement in body.split(";"):
+        statement = re.sub(r"\b(public|private|protected)\s*:\s*", "", statement)
+        statement = re.sub(r"\s+", " ", statement).strip()
+        if not statement or "(" in statement or ")" in statement:
+            continue
+        if statement.startswith(("public:", "private:", "protected:", "friend ")):
+            continue
+        if re.search(r"\b[A-Za-z_]\w*\s*$", statement) and len(statement) < 220:
+            members.append(statement + ";")
+    return members
+
+
 def _describe_function(name: str, declaration: str, file_path: Path) -> str:
     """Give a conservative purpose statement based on the operation's name and declaration."""
     lower = name.lstrip("~").lower()
@@ -427,7 +458,10 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 signature = re.sub(r"\s+", " ", text[match.start():line_end + 1]).strip() if line_end >= 0 else f"{kind} {name}"
                 output = "Псевдоним типа на этапе компиляции; во время выполнения данных не создаёт."
             else:
+                members = _extract_type_members(text, match)
                 signature = f"{kind} {name}"
+                if members:
+                    signature += "; поля/состав: " + " | ".join(members)
                 output = "Тип пользовательского уровня; результат зависит от его методов."
             groups[group].append([
                 name, signature, "Аргументы конструктора/методов описываются отдельно в таблице функций и методов.",
@@ -456,6 +490,7 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
             arg_description = "\n".join(_argument_description(arg) for arg in args) if args else "Нет аргументов."
             return_match = re.match(r"(.*?)(?:\b" + re.escape(name) + r"\s*\()", declaration)
             return_type = return_match.group(1).strip() if return_match else "тип не определён автоматически"
+            return_type = re.sub(r"^(?:(?:virtual|static|inline|explicit|constexpr|friend|Q_INVOKABLE|Q_SLOT|Q_SIGNAL)\s+)+", "", return_type).strip()
             if name.startswith("~") or name == Path(relative(path)).stem:
                 return_type = "конструктор/деструктор"
             output = f"Тип результата: {return_type or 'void/не определён'}."
