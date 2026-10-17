@@ -316,7 +316,7 @@ def _describe_function(name: str, declaration: str, file_path: Path) -> str:
     return f"Выполняет операцию «{name}» в компоненте, объявленном в {relative(file_path)}; конкретная логика определяется телом метода."
 
 
-def _find_function_body(name: str, files: list[Path]) -> str | None:
+def _find_function_body(name: str, files: list[Path], owner: str | None = None) -> str | None:
     """Return a matching C++ definition body when it can be identified conservatively."""
     if name.startswith("~"):
         searchable_name = re.escape(name)
@@ -326,9 +326,10 @@ def _find_function_body(name: str, files: list[Path]) -> str | None:
         if path.suffix.lower() not in {".cpp", ".cc", ".cxx", ".c"}:
             continue
         text = read_text(path)
+        owner_prefix = re.escape(owner) + r"::" if owner else r"(?:(?:[A-Za-z_]\w*)::)*"
         pattern = re.compile(
-            r"(?m)^[ \t]*(?:[\w:<>,~*&]+\s+)+(?:(?:[A-Za-z_]\w*)::)*"
-            + searchable_name + r"\s*\("
+            r"(?m)^[ \t]*(?:[\w:<>,~*&]+\s+)+"
+            + owner_prefix + searchable_name + r"\s*\("
         )
         for match in pattern.finditer(text):
             open_paren = text.find("(", match.start())
@@ -464,7 +465,7 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 output += " Создаёт или завершает время жизни экземпляра."
             else:
                 output += " Возвращает значение указанного типа; конкретный смысл определяется реализацией метода."
-            body = _find_function_body(name, files)
+            body = _find_function_body(name, files, Path(relative(path)).stem)
             effects_text = _describe_effects(name, declaration, body)
             groups["Функции и методы"].append([
                 name, declaration, arg_description,
