@@ -232,16 +232,21 @@ def _argument_description(argument: str) -> str:
     else:
         role = "входное значение, необходимое для выполнения операции"
     if "&&" in normalized:
-        mode = "передаётся с передачей владения/перемещением (rvalue-ссылка)"
+        mode = "входной параметр с передачей владения/перемещением (rvalue-ссылка)"
+        direction = "входной"
     elif "&" in normalized and "const" in normalized:
-        mode = "входной параметр по константной ссылке"
+        mode = "константная ссылка"
+        direction = "входной"
     elif "&" in normalized:
-        mode = "ссылка; операция может читать или изменять исходный объект"
+        mode = "неконстантная ссылка"
+        direction = "входной-выходной; может быть выходным, если тело метода записывает в параметр"
     elif "*" in normalized:
-        mode = "указатель; допустимость null определяется реализацией"
+        mode = "указатель"
+        direction = "входной или входной-выходной; nullability и направление определяются контрактом реализации"
     else:
         mode = "значение/копия"
-    return f"{normalized} — роль: {role}; способ передачи: {mode}."
+        direction = "входной"
+    return f"{normalized} — роль: {role}; направление: {direction}; способ передачи: {mode}."
 
 
 def _describe_unit(name: str, kind: str, file_path: Path) -> str:
@@ -280,7 +285,9 @@ def _describe_unit(name: str, kind: str, file_path: Path) -> str:
 def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
     """Extract declarations from current headers and produce documented unit cards."""
     groups: dict[str, list[list[str]]] = {
-        "Классы и структуры": [],
+        "Классы": [],
+        "Структуры": [],
+        "Интерфейсы": [],
         "Перечисления и псевдонимы": [],
         "Функции и методы": [],
     }
@@ -301,8 +308,12 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
             seen_types.add(key)
             if kind.startswith("enum") or kind in {"using", "typedef"}:
                 group = "Перечисления и псевдонимы"
+            elif kind == "struct":
+                group = "Структуры"
+            elif name.startswith("I") or "/interfaces/" in relative(path).replace("\\", "/"):
+                group = "Интерфейсы"
             else:
-                group = "Классы и структуры"
+                group = "Классы"
             description = _describe_unit(name, kind, path)
             if kind.startswith("enum"):
                 body_start = text.find("{", match.end())
@@ -534,7 +545,7 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
     doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
     add_paragraph(doc, "Программные единицы сгруппированы по видам. Для типов указаны состав и назначение; для функций и методов — сигнатура, роль и способ передачи каждого аргумента, тип выходных данных и возможное влияние на состояние или внешние ресурсы. Сигнатуры извлекаются из заголовочных файлов текущего checkout. Для точного описания побочных эффектов и назначения каждой операции необходимо учитывать тело реализации, а не только объявление.")
     units = extract_program_units(source)
-    for group_name in ("Классы и структуры", "Перечисления и псевдонимы", "Функции и методы"):
+    for group_name in ("Классы", "Структуры", "Интерфейсы", "Перечисления и псевдонимы", "Функции и методы"):
         doc.add_heading(group_name, level=3)
         rows = units[group_name]
         if rows:
