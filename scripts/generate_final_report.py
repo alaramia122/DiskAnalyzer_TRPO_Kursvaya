@@ -547,11 +547,15 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 if members:
                     signature += "; поля/состав: " + " | ".join(members)
                 output = f"При создании формируется экземпляр типа {name}; объявление типа само по себе не возвращает значение."
+            if kind.startswith("enum"):
+                type_effects = "Не изменяет внешние данные; задаёт набор именованных значений для использования в других программных единицах."
+            elif kind in {"using", "typedef"}:
+                type_effects = "Не создаёт и не изменяет данные во время выполнения; действует только на этапе компиляции."
+            else:
+                type_effects = "Объявление типа само по себе не изменяет внешние данные; состояние экземпляра изменяется его конструктором и методами."
             groups[group].append([
                 name, signature, "Аргументы конструктора/методов описываются отдельно в таблице функций и методов.",
-                description, output,
-                "Объявление типа само по себе не изменяет внешние данные; состояние экземпляра изменяется его конструктором и методами.",
-                relative(path),
+                description, output, type_effects, relative(path),
             ])
 
         # Parse declarations terminated by ';' (including multiline declarations).
