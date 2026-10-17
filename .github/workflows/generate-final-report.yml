@@ -25,13 +25,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install report dependency
-        run: python -m pip install --disable-pip-version-check python-docx
-
-      - name: Generate report
+      - name: Install report dependencies
         run: |
-          python scripts/generate_final_report.py --output dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx
-          test -s dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-writer poppler-utils
+          python -m pip install --disable-pip-version-check python-docx
+
+      - name: Generate report and paginate contents
+        run: |
+          set -euo pipefail
+          report="dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx"
+          mkdir -p dist/initial-render dist/preview
+          python scripts/generate_final_report.py --output "$report"
+          libreoffice --headless --convert-to pdf --outdir dist/initial-render "$report"
+          python scripts/update_toc_page_numbers.py "$report" "dist/initial-render/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf"
+          libreoffice --headless --convert-to pdf --outdir dist/preview "$report"
+          pdfinfo "dist/preview/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf" | grep -E '^Pages:'
+          test -s "$report"
           test -s dist/Отчет_курсовая_ТРПО_DiskAnalyzer.manifest.txt
 
       - name: Upload report and inventory
@@ -41,5 +51,6 @@ jobs:
           path: |
             dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx
             dist/Отчет_курсовая_ТРПО_DiskAnalyzer.manifest.txt
+            dist/preview/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf
           if-no-files-found: error
           retention-days: 30
