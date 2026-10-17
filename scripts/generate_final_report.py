@@ -81,6 +81,11 @@ def configure_document(doc: Document) -> None:
     sec.left_margin = Cm(2.5)
     sec.right_margin = Cm(1.5)
     styles = doc.styles
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    update_fields = OxmlElement("w:updateFields")
+    update_fields.set(qn("w:val"), "true")
+    doc.settings._element.append(update_fields)
     styles["Normal"].font.name = "Times New Roman"
     styles["Normal"].font.size = Pt(12)
     styles["Normal"].paragraph_format.space_after = Pt(5)
@@ -533,7 +538,7 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
         doc.add_heading(group_name, level=3)
         rows = units[group_name]
         if rows:
-            add_table(doc, ["Имя", "Сигнатура / состав", "Аргументы: роль и описание", "Назначение", "Выходные данные", "Изменение внешних данных / состояния", "Файл"], rows, [2.2, 3.8, 4.2, 3.5, 3.0, 4.0, 2.3])
+            add_table(doc, ["Программная единица и сигнатура / состав", "Аргументы: роль и описание", "Назначение", "Выходные данные и изменение состояния / внешних данных", "Файл"], [[row[0] + "\n" + row[1], row[2], row[3], row[4] + "\n\n" + row[5], row[6]] for row in rows], [3.4, 3.6, 3.3, 4.0, 2.0])
         else:
             add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
 
