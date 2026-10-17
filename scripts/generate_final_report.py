@@ -17,7 +17,8 @@ try:
     from docx import Document
     from docx.enum.section import WD_SECTION
     from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT, WD_TAB_LEADER
+    from docx.enum.style import WD_STYLE_TYPE
     from docx.shared import Cm, Pt, RGBColor
 except ImportError as exc:
     raise SystemExit("Missing dependency. Install it with: python -m pip install python-docx") from exc
@@ -633,15 +634,21 @@ def insert_static_table_of_contents(doc: Document) -> None:
     elements.append(title._p)
 
     for text, level in headings:
-        paragraph = doc.add_paragraph()
+        style_name = f"TOC Entry {level}"
+        if style_name not in doc.styles:
+            toc_style = doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
+            toc_style.base_style = doc.styles["Normal"]
+        paragraph = doc.add_paragraph(style=style_name)
         paragraph.paragraph_format.space_after = Pt(2)
         paragraph.paragraph_format.left_indent = Cm(0.6 * (level - 1))
         paragraph.paragraph_format.keep_with_next = False
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Cm(15.5), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
         run = paragraph.add_run(text)
         run.font.name = "Times New Roman"
         run.font.size = Pt(10 if level > 1 else 11)
         if level == 1:
             run.bold = True
+        paragraph.add_run("\\t")
         elements.append(paragraph._p)
 
     page_break = doc.add_paragraph()
