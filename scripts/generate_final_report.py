@@ -648,7 +648,7 @@ def insert_static_table_of_contents(doc: Document) -> None:
         run.font.size = Pt(10 if level > 1 else 11)
         if level == 1:
             run.bold = True
-        paragraph.add_run("\\t")
+        paragraph.add_run("\t")
         elements.append(paragraph._p)
 
     page_break = doc.add_paragraph()
