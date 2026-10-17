@@ -15,7 +15,7 @@ from typing import Iterable
 
 try:
     from docx import Document
-    from docx.enum.section import WD_SECTION
+    from docx.enum.section import WD_SECTION, WD_ORIENT
     from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT, WD_TAB_LEADER
     from docx.enum.style import WD_STYLE_TYPE
@@ -788,6 +788,15 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
         ["Выход", "Таблица, круговая диаграмма, прогресс и ошибки", "Представление результата пользователю."],
         ["Выход", "JSON или TXT", "Сохранение агрегированного результата."],
     ])
+    # The detailed program-unit tables need a wide page to keep signatures and descriptions readable.
+    landscape = doc.add_section(WD_SECTION.NEW_PAGE)
+    landscape.orientation = WD_ORIENT.LANDSCAPE
+    landscape.page_width, landscape.page_height = landscape.page_height, landscape.page_width
+    landscape.top_margin = Cm(1.5)
+    landscape.bottom_margin = Cm(1.5)
+    landscape.left_margin = Cm(1.5)
+    landscape.right_margin = Cm(1.5)
+
     doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
     add_paragraph(doc, "Программные единицы сгруппированы по видам. Для типов указаны состав и назначение; для функций и методов — сигнатура, роль и способ передачи каждого аргумента, тип выходных данных и возможное влияние на состояние или внешние ресурсы. Сигнатуры извлекаются из заголовочных файлов текущего checkout. Для точного описания побочных эффектов и назначения каждой операции необходимо учитывать тело реализации, а не только объявление.")
     units = extract_program_units(source)
@@ -798,6 +807,15 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
             add_table(doc, ["Программная единица и сигнатура / состав", "Аргументы: роль и описание", "Назначение", "Выходные данные и изменение состояния / внешних данных", "Файл"], [[row[0] + "\n" + row[1], row[2], row[3], row[4] + "\n\n" + row[5], row[6]] for row in rows], [3.4, 3.6, 3.3, 4.0, 2.0])
         else:
             add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
+
+    # Return to portrait orientation for narrative sections and source listings.
+    portrait = doc.add_section(WD_SECTION.NEW_PAGE)
+    portrait.orientation = WD_ORIENT.PORTRAIT
+    portrait.page_width, portrait.page_height = portrait.page_height, portrait.page_width
+    portrait.top_margin = Cm(2)
+    portrait.bottom_margin = Cm(2)
+    portrait.left_margin = Cm(2.5)
+    portrait.right_margin = Cm(1.5)
 
     doc.add_heading("Архитектура и потоки данных", level=2)
     add_table(doc, ["Компонент", "Ответственность", "Связи/поток данных"], [
