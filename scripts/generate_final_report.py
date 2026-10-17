@@ -227,6 +227,10 @@ def _argument_description(argument: str) -> str:
         role = "функция обратного вызова/получатель уведомлений"
     elif any(word in lower for word in ("error", "message", "reason")):
         role = "описание ошибки или диагностическое сообщение"
+    elif lower == "argc":
+        role = "количество аргументов командной строки при запуске приложения"
+    elif lower == "argv":
+        role = "массив аргументов командной строки при запуске приложения"
     elif any(word in lower for word in ("index", "row", "column", "level")):
         role = "индекс, позиция или уровень элемента"
     else:
@@ -437,6 +441,11 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
             kind, name = match.group(1), match.group(2)
             if name in {"if", "while", "switch"}:
                 continue
+            if kind in {"class", "struct"}:
+                opening = text.find("{", match.end())
+                semicolon = text.find(";", match.end())
+                if opening < 0 or (semicolon >= 0 and semicolon < opening):
+                    continue
             key = (kind, name)
             if key in seen_types:
                 continue
@@ -509,6 +518,22 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 name, declaration, arg_description,
                 _describe_function(name, declaration, path),
                 output, effects_text, relative(path),
+            ])
+    # main() is the application's composition root and is intentionally listed as a program unit.
+    main_path = next((path for path in files if relative(path) == "src/main.cpp"), None)
+    if main_path is not None:
+        main_text = read_text(main_path)
+        main_match = re.search(r"(?s)\bint\s+main\s*\((.*?)\)\s*\{", main_text)
+        if main_match:
+            params = _split_parameters(main_match.group(1))
+            args = "\n".join(_argument_description(arg) for arg in params) if params else "Нет аргументов."
+            groups["Функции и методы"].append([
+                "main", "int main(" + ", ".join(params) + ")",
+                args,
+                "Точка входа: создаёт QApplication, собирает зависимости сканера, классификатора, агрегатора, конвейера, контроллера и главного окна; запускает цикл обработки событий Qt.",
+                "Возвращает целочисленный код завершения приложения, полученный от цикла событий Qt.",
+                "Создаёт объекты приложения и UI, запускает цикл событий; само по себе не выполняет анализ каталога до команды пользователя.",
+                relative(main_path),
             ])
     for group in groups:
         groups[group].sort(key=lambda row: (row[0].lower(), row[-1].lower()))
