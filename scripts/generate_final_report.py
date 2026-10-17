@@ -285,7 +285,8 @@ def _describe_unit(name: str, kind: str, file_path: Path) -> str:
 def _extract_type_members(text: str, match: re.Match) -> list[str]:
     """Extract simple data-member declarations from a class/struct body."""
     opening = text.find("{", match.end())
-    if opening < 0:
+    semicolon = text.find(";", match.end())
+    if opening < 0 or (semicolon >= 0 and semicolon < opening):
         return []
     depth = 0
     closing = -1
@@ -396,6 +397,8 @@ def _find_function_body(name: str, files: list[Path], owner: str | None = None) 
 def _describe_effects(name: str, declaration: str, body: str | None) -> str:
     """Describe effects from the declaration and available definition; state uncertainty explicitly."""
     if body is None:
+        if "= 0" in declaration:
+            return "Абстрактное объявление интерфейса: само по себе не выполняет операцию и не меняет данные; эффекты задаются конкретной реализацией."
         return "Тело определения не удалось сопоставить автоматически; по одной сигнатуре внешние изменения достоверно не определяются."
     effects: list[str] = []
     if re.search(r"\b(?:std::filesystem::directory_iterator|directory_iterator|file_size|status|symlink_status|ifstream|QIODevice::ReadOnly|QFileInfo|QDir::entryInfoList)\b", body):
@@ -516,7 +519,10 @@ def add_table_of_contents(doc: Document) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    doc.add_heading("Оглавление", level=1)
+    title = doc.add_paragraph()
+    title.style = "Title"
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.add_run("Оглавление")
     paragraph = doc.add_paragraph()
     run = paragraph.add_run()
     begin = OxmlElement("w:fldChar")
