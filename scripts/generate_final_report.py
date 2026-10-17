@@ -534,7 +534,7 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
             if kind.startswith("enum"):
                 body_start = text.find("{", match.end())
                 body_end = text.find("}", body_start + 1) if body_start >= 0 else -1
-                members = re.sub(r"\s+", " ", text[body_start + 1:body_end]).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
+                members = re.sub(r"\s+", " ", re.sub(r"/\*.*?\*/|//[^\n]*", "", text[body_start + 1:body_end], flags=re.S)).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
                 signature = f"{kind} {name} {{ {members} }}"
                 output = "Задаёт допустимый набор значений; сам тип не возвращает значение."
             elif kind in {"using", "typedef"}:
