@@ -175,29 +175,235 @@ def add_code_block(doc: Document, text: str, *, as_table: bool = False) -> None:
             r.font.size = Pt(9)
 
 
-def extract_cpp_units(files: list[Path]) -> list[list[str]]:
-    """Conservative declaration inventory: include only declarations found in source."""
-    pattern = re.compile(r"\b(class|struct|enum\s+class|enum|using|typedef)\s+([A-Za-z_][A-Za-z0-9_]*)")
-    rows: list[list[str]] = []
-    seen: set[tuple[str, str]] = set()
+def _split_parameters(text: str) -> list[str]:
+    """Split a C++ parameter list without splitting template arguments."""
+    result: list[str] = []
+    depth = 0
+    start = 0
+    for index, char in enumerate(text):
+        if char in "<([{":
+            depth += 1
+        elif char in ">)]}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            part = text[start:index].strip()
+            if part and part != "void":
+                result.append(part)
+            start = index + 1
+    part = text[start:].strip()
+    if part and part != "void":
+        result.append(part)
+    return result
+
+
+def _argument_description(argument: str) -> str:
+    """Describe the role of a parameter from its declared name/type, without inventing values."""
+    normalized = re.sub(r"\s+", " ", argument.strip())
+    name_match = re.search(r"([A-Za-z_]\w*)\s*(?:=\s*[^,]+)?$", normalized)
+    name = name_match.group(1) if name_match else "параметр"
+    lower = name.lower()
+    if name in {"", "void"}:
+        role = "параметр отсутствует"
+    elif any(word in lower for word in ("path", "directory", "folder", "root")):
+        role = "путь/каталог, задающий объект файловой системы или область операции"
+    elif any(word in lower for word in ("file", "filename", "filepath")):
+        role = "файл или имя файла, обрабатываемое операцией"
+    elif any(word in lower for word in ("size", "bytes", "count", "total")):
+        role = "числовое значение размера или количества"
+    elif any(word in lower for word in ("category", "type", "format", "status", "scope")):
+        role = "параметр выбора категории, типа, формата, статуса или области"
+    elif any(word in lower for word in ("node", "parent", "child", "directorynode")):
+        role = "узел дерева каталогов или связь между узлами"
+    elif any(word in lower for word in ("result", "statistics", "stats", "data", "info")):
+        role = "данные результата или статистики, используемые операцией"
+    elif any(word in lower for word in ("cancel", "stop", "running")):
+        role = "состояние или запрос управления выполнением"
+    elif any(word in lower for word in ("progress", "callback", "handler", "observer")):
+        role = "функция обратного вызова/получатель уведомлений"
+    elif any(word in lower for word in ("error", "message", "reason")):
+        role = "описание ошибки или диагностическое сообщение"
+    elif any(word in lower for word in ("index", "row", "column", "level")):
+        role = "индекс, позиция или уровень элемента"
+    else:
+        role = "входное значение, необходимое для выполнения операции"
+    if "&&" in normalized:
+        mode = "передаётся с передачей владения/перемещением (rvalue-ссылка)"
+    elif "&" in normalized and "const" in normalized:
+        mode = "входной параметр по константной ссылке"
+    elif "&" in normalized:
+        mode = "ссылка; операция может читать или изменять исходный объект"
+    elif "*" in normalized:
+        mode = "указатель; допустимость null определяется реализацией"
+    else:
+        mode = "значение/копия"
+    return f"{normalized} — роль: {role}; способ передачи: {mode}."
+
+
+def _describe_unit(name: str, kind: str, file_path: Path) -> str:
+    known = {
+        "AnalysisPipeline": "Координирует последовательное выполнение сканирования файловой системы и агрегации статистики.",
+        "ApplicationController": "Организует выполнение анализа для приложения, передаёт прогресс/ошибки интерфейсу и обрабатывает запрос отмены.",
+        "AnalysisResult": "Хранит результат анализа, корневой узел дерева каталогов и операции доступа к выбранному каталогу/статистике.",
+        "DirectoryNode": "Представляет каталог в дереве результата, его путь, связи с дочерними каталогами и агрегированную статистику.",
+        "DirectoryStatistics": "Хранит статистику каталога в разрезе непосредственных файлов и вложенных каталогов.",
+        "FileInfo": "Временная запись о файловом объекте, используемая при чтении и классификации.",
+        "DirectoryScanner": "Обходит файловую систему, строит дерево каталогов и собирает статистику непосредственно содержащихся файлов.",
+        "DirectoryAggregator": "Вычисляет статистику вложенных каталогов по построенному дереву без повторного обращения к файловой системе.",
+        "FileClassifier": "Определяет категорию файла по его расширению.",
+        "DirectoryContentsReader": "Читает непосредственное содержимое выбранного каталога для отображения в интерфейсе.",
+        "DirectoryCacheManager": "Кэширует локальные списки содержимого каталогов для ускорения навигации; не является владельцем дерева анализа.",
+        "ExportManager": "Сериализует результат анализа в поддерживаемые форматы экспорта.",
+        "VisualizationModel": "Преобразует статистику каталога в значения, необходимые для построения диаграммы.",
+        "MainWindow": "Предоставляет основное окно приложения и связывает действия пользователя с отображением результата.",
+        "IDirectoryScanner": "Интерфейс сканирования файловой системы.",
+        "IDirectoryAggregator": "Интерфейс агрегации статистики дерева каталогов.",
+        "IFileClassifier": "Интерфейс классификации файлов.",
+    }
+    if name in known:
+        return known[name]
+    if kind.startswith("enum"):
+        return f"Задаёт конечный набор допустимых значений для параметра/состояния «{name}»."
+    if kind == "struct":
+        return f"Структура данных «{name}», объединяющая связанные поля предметной области; точный состав указан в объявлении."
+    if kind == "class":
+        return f"Класс «{name}», инкапсулирующий данные и операции соответствующего компонента; публичные операции перечислены ниже."
+    if kind in {"using", "typedef"}:
+        return f"Объявляет псевдоним типа «{name}» для сокращения и унификации сигнатур."
+    return f"Программная единица «{name}», объявленная в {relative(file_path)}."
+
+
+def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
+    """Extract declarations from current headers and produce documented unit cards."""
+    groups: dict[str, list[list[str]]] = {
+        "Классы и структуры": [],
+        "Перечисления и псевдонимы": [],
+        "Функции и методы": [],
+    }
+    type_pattern = re.compile(r"\b(class|struct|enum\s+class|enum|using|typedef)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    seen_types: set[tuple[str, str]] = set()
+    seen_functions: set[tuple[str, str, str]] = set()
     for path in files:
-        if path.suffix.lower() not in SOURCE_EXTENSIONS:
+        if path.suffix.lower() not in {".h", ".hpp"}:
             continue
         text = read_text(path)
-        for match in pattern.finditer(text):
+        for match in type_pattern.finditer(text):
             kind, name = match.group(1), match.group(2)
-            key = (kind, name)
-            if key in seen or name in {"if", "while", "switch"}:
+            if name in {"if", "while", "switch"}:
                 continue
-            seen.add(key)
-            rows.append([name, kind, "Объявление найдено в исходном коде.", relative(path)])
-    return rows
+            key = (kind, name)
+            if key in seen_types:
+                continue
+            seen_types.add(key)
+            if kind.startswith("enum") or kind in {"using", "typedef"}:
+                group = "Перечисления и псевдонимы"
+            else:
+                group = "Классы и структуры"
+            description = _describe_unit(name, kind, path)
+            if kind.startswith("enum"):
+                body_start = text.find("{", match.end())
+                body_end = text.find("}", body_start + 1) if body_start >= 0 else -1
+                members = re.sub(r"\s+", " ", text[body_start + 1:body_end]).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
+                signature = f"{kind} {name} {{ {members} }}"
+                output = "Набор именованных значений перечисления; отдельного возвращаемого значения нет."
+            elif kind in {"using", "typedef"}:
+                line_end = text.find(";", match.start())
+                signature = re.sub(r"\s+", " ", text[match.start():line_end + 1]).strip() if line_end >= 0 else f"{kind} {name}"
+                output = "Псевдоним типа на этапе компиляции; во время выполнения данных не создаёт."
+            else:
+                signature = f"{kind} {name}"
+                output = "Тип пользовательского уровня; результат зависит от его методов."
+            groups[group].append([
+                name, signature, "Аргументы конструктора/методов описываются отдельно в таблице функций и методов.",
+                description, output,
+                "Само объявление тип не изменяет; изменение состояния возможно при создании экземпляров и вызове его методов.",
+                relative(path),
+            ])
+
+        # Parse declarations terminated by ';' (including multiline declarations).
+        # Definitions in .cpp are intentionally not guessed: public/private signatures are taken from headers.
+        for match in re.finditer(r"(?m)^[ \t]*(?:virtual\s+|static\s+|inline\s+|explicit\s+|constexpr\s+|friend\s+|Q_INVOKABLE\s+|Q_SLOT\s+|Q_SIGNAL\s+)*(?:[\w:~<>]+(?:\s*[*&]+)?(?:\s+|\s*[*&]\s*)+)?[A-Za-z_~]\w*\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?:=\s*0\s*)?;", text):
+            declaration = re.sub(r"\s+", " ", match.group(0)).strip()
+            if declaration.startswith(("if ", "for ", "while ", "switch ")):
+                continue
+            name_match = re.search(r"([A-Za-z_~]\w*)\s*\((.*)\)", declaration)
+            if not name_match:
+                continue
+            name, params_text = name_match.group(1), name_match.group(2)
+            if name in {"if", "for", "while", "switch", "static_assert"}:
+                continue
+            key = (relative(path), name, declaration)
+            if key in seen_functions:
+                continue
+            seen_functions.add(key)
+            args = _split_parameters(params_text)
+            arg_description = "\n".join(_argument_description(arg) for arg in args) if args else "Нет аргументов."
+            return_match = re.match(r"(.*?)(?:\b" + re.escape(name) + r"\s*\()", declaration)
+            return_type = return_match.group(1).strip() if return_match else "тип не определён автоматически"
+            if name.startswith("~") or name == Path(relative(path)).stem:
+                return_type = "конструктор/деструктор"
+            output = f"Тип результата: {return_type or 'void/не определён'}."
+            if not return_type or return_type == "void":
+                output += " Возвращаемое значение отсутствует."
+            elif "конструктор" in return_type:
+                output += " Создаёт или завершает время жизни экземпляра."
+            else:
+                output += " Возвращает значение указанного типа; конкретный смысл определяется реализацией метода."
+            lower = name.lower()
+            effects = []
+            if "const" in declaration:
+                effects.append("метод объявлен const: изменение обычного состояния объекта не заявлено сигнатурой")
+            else:
+                effects.append("метод не объявлен const: может изменять состояние объекта; фактические изменения определяются телом метода")
+            if any(x in lower for x in ("scan", "read", "load", "refresh", "iterate", "open")):
+                effects.append("по назначению имени может читать файловую систему/источник данных")
+            if any(x in lower for x in ("export", "save", "write", "serialize")):
+                effects.append("по назначению имени может создавать или изменять выходной файл")
+            if any(x in lower for x in ("set", "add", "remove", "clear", "reset", "invalidate", "cancel", "update", "append", "insert")):
+                effects.append("имя указывает на возможное изменение переданного объекта или внутреннего состояния")
+            if any(x in lower for x in ("emit", "notify", "progress", "error", "finished")):
+                effects.append("может передавать уведомление/сигнал вызывающему коду или интерфейсу")
+            if not effects:
+                effects.append("внешние изменения по сигнатуре не определяются; тело реализации является источником истины")
+            groups["Функции и методы"].append([
+                name, declaration, arg_description,
+                f"Операция «{name}» компонента из файла {relative(path)}. Назначение уточняется по реализации и контексту вызова.",
+                output, "; ".join(effects) + ".", relative(path),
+            ])
+    for group in groups:
+        groups[group].sort(key=lambda row: (row[0].lower(), row[-1].lower()))
+    return groups
+
+def add_table_of_contents(doc: Document) -> None:
+    """Insert a Word TOC field and request field refresh when the document opens."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    doc.add_heading("Оглавление", level=1)
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run()
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    instruction = OxmlElement("w:instrText")
+    instruction.set(qn("xml:space"), "preserve")
+    instruction.text = ' TOC \\o "1-2" \\h \\z \\u '
+    separate = OxmlElement("w:fldChar")
+    separate.set(qn("w:fldCharType"), "separate")
+    placeholder = OxmlElement("w:t")
+    placeholder.text = "Оглавление будет сформировано при обновлении полей документа в Microsoft Word или LibreOffice."
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run._r.append(begin)
+    run._r.append(instruction)
+    run._r.append(separate)
+    run._r.append(placeholder)
+    run._r.append(end)
+    doc.add_page_break()
 
 
 def add_title_page(doc: Document) -> None:
     for line in [
         "МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ РОССИЙСКОЙ ФЕДЕРАЦИИ",
-        "Федеральное государственное бюджетное образовательное учреждение высшего образования",
+        "Автономная некоммерческая организация высшего образования",
         "«МОСКОВСКИЙ АВИАЦИОННЫЙ ИНСТИТУТ",
         "(национальный исследовательский университет)»",
         "Институт № 7 «Интеллектуальные и робототехнические системы»",
@@ -229,7 +435,7 @@ def add_title_page(doc: Document) -> None:
         doc.add_paragraph()
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run("Выполнил: студент группы М70-407С-22\nОсипенко Гавриил Васильевич\n\nПроверяющий: ____________________")
+    p.add_run("Выполнил: студент группы М70-407С-22\nОсипенко Гавриил Васильевич\n\nПроверил: Барчев Н. Б.")
     for _ in range(3):
         doc.add_paragraph()
     p = doc.add_paragraph()
@@ -321,12 +527,16 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
         ["Выход", "JSON или TXT", "Сохранение агрегированного результата."],
     ])
     doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
-    add_paragraph(doc, "Следующая таблица — автоматически собранный перечень объявлений типов из исходников. Для каждого типа назначение следует сверять с определением в указанном файле; таблица не подменяет изучение кода.")
-    units = extract_cpp_units(source)
-    if units:
-        add_table(doc, ["Имя", "Вид объявления", "Назначение", "Файл-источник"], units, [3, 2.5, 6, 5])
-    else:
-        add_paragraph(doc, "Объявления типов автоматически не обнаружены. Проверить исходники вручную перед сдачей.")
+    add_paragraph(doc, "Программные единицы сгруппированы по видам. Для типов указаны состав и назначение; для функций и методов — сигнатура, роль и способ передачи каждого аргумента, тип выходных данных и возможное влияние на состояние или внешние ресурсы. Сигнатуры извлекаются из заголовочных файлов текущего checkout. Для точного описания побочных эффектов и назначения каждой операции необходимо учитывать тело реализации, а не только объявление.")
+    units = extract_program_units(source)
+    for group_name in ("Классы и структуры", "Перечисления и псевдонимы", "Функции и методы"):
+        doc.add_heading(group_name, level=3)
+        rows = units[group_name]
+        if rows:
+            add_table(doc, ["Имя", "Сигнатура / состав", "Аргументы: роль и описание", "Назначение", "Выходные данные", "Изменение внешних данных / состояния", "Файл"], rows, [2.2, 3.8, 4.2, 3.5, 3.0, 4.0, 2.3])
+        else:
+            add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
+
     doc.add_heading("Архитектура и потоки данных", level=2)
     add_table(doc, ["Компонент", "Ответственность", "Связи/поток данных"], [
         ["Domain", "Модели, перечисления и интерфейсы предметной области.", "Используется прикладным и инфраструктурным слоями; не зависит от Qt."],
@@ -446,6 +656,7 @@ def main() -> int:
     for section in doc.sections:
         add_page_number(section)
     add_title_page(doc)
+    add_table_of_contents(doc)
 
     doc.add_heading("Задание", level=1)
     add_paragraph(doc, markdown_quote_text(ASSIGNMENT))
@@ -460,7 +671,7 @@ def main() -> int:
     doc.core_properties.author = "Осипенко Гавриил Васильевич"
     doc.save(output)
 
-    expected = ["Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Листинг", "Тестирование", "Заключение"]
+    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Классы и структуры", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение"]
     validate_docx(output, expected, len(sources))
     manifest = output.with_suffix(".manifest.txt")
     manifest.write_text(
