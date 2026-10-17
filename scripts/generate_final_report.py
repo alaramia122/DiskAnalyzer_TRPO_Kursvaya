@@ -1,0 +1,485 @@
+#!/usr/bin/env python3
+"""Generate a coursework report DOCX from the current repository checkout.
+
+This generator deliberately avoids claiming that tests passed: test outcomes must be
+verified from a real CTest/CI run and are described as unverified unless supplied.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+import zipfile
+from pathlib import Path
+from typing import Iterable
+
+try:
+    from docx import Document
+    from docx.enum.section import WD_SECTION
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Pt, RGBColor
+except ImportError as exc:
+    raise SystemExit("Missing dependency. Install it with: python -m pip install python-docx") from exc
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT = ROOT / "dist" / "Отчет_курсовая_ТРПО_DiskAnalyzer.docx"
+ASSIGNMENT = ROOT / "docs" / "reporting" / "ASSIGNMENT.md"
+REPORT_SPEC = ROOT / "docs" / "reporting" / "REPORT_SPECIFICATION.md"
+SOURCE_EXTENSIONS = {".h", ".hpp", ".c", ".cc", ".cpp", ".cxx"}
+EXCLUDED_PARTS = {".git", "build", "dist", ".venv", "venv", "__pycache__", "node_modules"}
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def markdown_quote_text(path: Path) -> str:
+    """Extract the teacher's verbatim blockquote from ASSIGNMENT.md."""
+    text = read_text(path)
+    lines = text.splitlines()
+    inside = False
+    collected: list[str] = []
+    for line in lines:
+        if line.startswith("> "):
+            inside = True
+            collected.append(line[2:])
+        elif inside and not line.strip():
+            break
+    if not collected:
+        raise RuntimeError(f"Could not find quoted assignment in {path}")
+    return "\n".join(collected)
+
+
+def source_files() -> list[Path]:
+    found: list[Path] = []
+    for folder in (ROOT / "src", ROOT / "tests"):
+        if not folder.exists():
+            continue
+        for path in folder.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in SOURCE_EXTENSIONS:
+                continue
+            if any(part in EXCLUDED_PARTS for part in path.parts):
+                continue
+            found.append(path)
+    # Include build/test configuration as source artifacts, not as C++ source.
+    for candidate in (ROOT / "CMakeLists.txt", ROOT / ".github" / "workflows" / "build-release.yml"):
+        if candidate.is_file():
+            found.append(candidate)
+    return sorted(set(found), key=lambda p: p.relative_to(ROOT).as_posix().lower())
+
+
+def relative(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
+def configure_document(doc: Document) -> None:
+    sec = doc.sections[0]
+    sec.top_margin = Cm(2)
+    sec.bottom_margin = Cm(2)
+    sec.left_margin = Cm(2.5)
+    sec.right_margin = Cm(1.5)
+    styles = doc.styles
+    styles["Normal"].font.name = "Times New Roman"
+    styles["Normal"].font.size = Pt(12)
+    styles["Normal"].paragraph_format.space_after = Pt(5)
+    for name in ("Title", "Heading 1", "Heading 2", "Heading 3"):
+        styles[name].font.name = "Times New Roman"
+    styles["Heading 1"].font.size = Pt(16)
+    styles["Heading 1"].font.bold = True
+    styles["Heading 2"].font.size = Pt(14)
+    styles["Heading 3"].font.size = Pt(12)
+    styles["Heading 1"].paragraph_format.keep_with_next = True
+    styles["Heading 2"].paragraph_format.keep_with_next = True
+
+
+def add_page_number(section) -> None:
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = footer.add_run()
+    # Word PAGE field. LibreOffice and Microsoft Word resolve this on opening/updating.
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    fld = OxmlElement("w:fldSimple")
+    fld.set(qn("w:instr"), "PAGE")
+    run._r.addnext(fld)
+
+
+def add_paragraph(doc: Document, text: str = "", *, bold: bool = False, italic: bool = False):
+    p = doc.add_paragraph()
+    r = p.add_run(text)
+    r.bold = bold
+    r.italic = italic
+    return p
+
+
+def add_bullets(doc: Document, items: Iterable[str]) -> None:
+    for item in items:
+        doc.add_paragraph(item, style="List Bullet")
+
+
+def add_numbered(doc: Document, items: Iterable[str]) -> None:
+    for item in items:
+        doc.add_paragraph(item, style="List Number")
+
+
+def add_table(doc: Document, headers: list[str], rows: list[list[str]], widths_cm: list[float] | None = None):
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    for i, label in enumerate(headers):
+        cell = table.rows[0].cells[i]
+        cell.text = label
+        for run in cell.paragraphs[0].runs:
+            run.bold = True
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(10)
+    for row in rows:
+        cells = table.add_row().cells
+        for i, value in enumerate(row):
+            cells[i].text = str(value)
+            cells[i].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for para in cells[i].paragraphs:
+                para.paragraph_format.space_after = Pt(2)
+                for run in para.runs:
+                    run.font.name = "Times New Roman"
+                    run.font.size = Pt(9)
+    if widths_cm:
+        for row in table.rows:
+            for i, width in enumerate(widths_cm):
+                row.cells[i].width = Cm(width)
+    doc.add_paragraph()
+    return table
+
+
+def add_code_block(doc: Document, text: str, *, as_table: bool = False) -> None:
+    if as_table:
+        table = doc.add_table(rows=1, cols=1)
+        table.style = "Table Grid"
+        cell = table.cell(0, 0)
+        cell.text = ""
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_after = Pt(0)
+        r = p.add_run(text.rstrip("\n"))
+        r.font.name = "Courier New"
+        r.font.size = Pt(7)
+        r.font.color.rgb = RGBColor(30, 30, 30)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    else:
+        for line in text.rstrip("\n").splitlines():
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(0)
+            p.paragraph_format.left_indent = Cm(0.5)
+            r = p.add_run(line if line else " ")
+            r.font.name = "Courier New"
+            r.font.size = Pt(9)
+
+
+def extract_cpp_units(files: list[Path]) -> list[list[str]]:
+    """Conservative declaration inventory: include only declarations found in source."""
+    pattern = re.compile(r"\b(class|struct|enum\s+class|enum|using|typedef)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    rows: list[list[str]] = []
+    seen: set[tuple[str, str]] = set()
+    for path in files:
+        if path.suffix.lower() not in SOURCE_EXTENSIONS:
+            continue
+        text = read_text(path)
+        for match in pattern.finditer(text):
+            kind, name = match.group(1), match.group(2)
+            key = (kind, name)
+            if key in seen or name in {"if", "while", "switch"}:
+                continue
+            seen.add(key)
+            rows.append([name, kind, "Объявление найдено в исходном коде.", relative(path)])
+    return rows
+
+
+def add_title_page(doc: Document) -> None:
+    for line in [
+        "МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ РОССИЙСКОЙ ФЕДЕРАЦИИ",
+        "Федеральное государственное бюджетное образовательное учреждение высшего образования",
+        "«МОСКОВСКИЙ АВИАЦИОННЫЙ ИНСТИТУТ",
+        "(национальный исследовательский университет)»",
+        "Институт № 7 «Интеллектуальные и робототехнические системы»",
+        "Кафедра 703",
+    ]:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(line)
+        r.font.name = "Times New Roman"
+        r.font.size = Pt(12 if len(line) < 80 else 10)
+        if line.startswith("«МОСКОВСКИЙ"):
+            r.bold = True
+    for _ in range(3):
+        doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p.add_run("КУРСОВАЯ РАБОТА")
+    r.bold = True
+    r.font.size = Pt(16)
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run("по дисциплине «Технологии разработки программного обеспечения»")
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p.add_run("Разработка оконного приложения для анализа дискового пространства файловой системы")
+    r.bold = True
+    r.font.size = Pt(14)
+    for _ in range(3):
+        doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p.add_run("Выполнил: студент группы М70-407С-22\nОсипенко Гавриил Васильевич\n\nПроверяющий: ____________________")
+    for _ in range(3):
+        doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run("Москва, 2026")
+    doc.add_page_break()
+
+
+def add_pseudocode(doc: Document) -> None:
+    doc.add_heading("Псевдокод алгоритмов решения задачи", level=1)
+    algorithms = [
+        ("Основной алгоритм работы программы", """НАЧАЛО
+  Получить путь каталога от пользователя
+  Проверить возможность начать анализ
+  Запустить анализ вне потока пользовательского интерфейса
+  Построить дерево каталогов и собрать Direct-статистику
+  Если анализ завершён или отменён:
+    вычислить статистику вложенных каталогов снизу вверх
+    передать результат интерфейсу вместе со статусом и ошибками
+  Отобразить дерево, статистику и данные диаграммы
+  При выборе каталога обновить представление по сохранённому результату
+  При экспорте сериализовать агрегированные данные в выбранный формат
+КОНЕЦ"""),
+        ("Представление дерева каталогов", """Для каждого доступного каталога создать узел
+  Сохранить путь каталога и связь с родительским/дочерними узлами
+  Записать статистику файлов, непосредственно находящихся в каталоге
+Не хранить постоянный глобальный список всех файлов как основу навигации
+После сканирования сохранить дерево и агрегированную статистику"""),
+        ("Сканирование файловой системы", """Поместить корневой каталог в очередь/стек обхода
+Пока имеются каталоги для обработки и анализ не отменён:
+  получить очередной каталог
+  перечислить его непосредственное содержимое
+  для каждого объекта:
+    обработать ошибку доступа, если она возникла
+    если объект — обычный файл:
+      получить размер
+      определить категорию
+      увеличить Direct-счётчики текущего каталога
+    иначе если объект — каталог и его не следует пропускать:
+      создать дочерний узел и добавить его в очередь
+    иначе:
+      не обходить цель символической ссылки на каталог рекурсивно
+Зафиксировать итоговый статус, прогресс и ошибки"""),
+        ("Классификация файла", """Получить расширение имени файла
+Нормализовать расширение способом, используемым реализацией
+Найти расширение в таблице соответствий категориям
+Если соответствие найдено — вернуть категорию
+Иначе вернуть Unknown или Other согласно контракту классификатора"""),
+        ("Агрегация статистики", """Обработать дерево снизу вверх
+Для каждого узла:
+  начать Subtree-статистику с нулевых значений
+  для каждого дочернего каталога:
+    добавить его Direct- и Subtree-статистику в Subtree текущего узла
+  вычислить Total как Direct + Subtree
+Не обращаться к файловой системе на этапе агрегации"""),
+        ("Подготовка диаграммы", """Получить статистику текущего каталога
+Определить выбранную область: Direct, Subtree или Total
+Для каждой категории взять размер выбранной области
+Вычислить долю от общего размера; при нулевом размере долю считать нулевой
+Передать подписи, размеры и доли модели визуализации"""),
+        ("Навигация по каталогу", """Получить выбранный узел/путь из дерева интерфейса
+Найти соответствующий узел в результате анализа
+Обновить статистику и диаграмму для выбранного узла
+Получить список непосредственного содержимого через reader/cache
+Не запускать полное сканирование повторно только ради навигации"""),
+        ("Экспорт результата", """Получить текущий результат анализа и выбранный формат
+Проверить доступность выходного файла
+Сериализовать сохранённые агрегированные данные в JSON или TXT
+Записать файл и обработать возможную ошибку записи
+Сообщить интерфейсу об успешном сохранении или ошибке"""),
+    ]
+    for title, code in algorithms:
+        doc.add_heading(title, level=2)
+        add_code_block(doc, code)
+
+
+def add_implementation(doc: Document, source: list[Path]) -> None:
+    doc.add_heading("Сведения о программной реализации", level=1)
+    doc.add_heading("Сведения о выбранном языке программирования", level=2)
+    add_paragraph(doc, "Программа реализована на C++17. Для оконного интерфейса и визуализации используются Qt 5 Core, Widgets и Charts. Сборка конфигурируется CMake, автоматические тесты регистрируются через CTest, CI выполняется GitHub Actions.")
+    doc.add_heading("Описание входных и выходных данных", level=2)
+    add_table(doc, ["Вид", "Данные", "Назначение"], [
+        ["Вход", "Путь к корневому каталогу", "Определяет область анализа."],
+        ["Вход", "Состояние файловой системы и права доступа", "Влияют на доступность объектов и полноту результата."],
+        ["Вход", "Команды интерфейса", "Запуск/отмена анализа, выбор каталога, переключение области статистики, экспорт."],
+        ["Внутренние данные", "Путь, тип, размер и категория объекта при обработке", "Используются сканером, классификатором и агрегатором согласно текущим контрактам."],
+        ["Выход", "Дерево каталогов и агрегированная статистика", "Навигация и анализ по директориям без повторного полного обхода."],
+        ["Выход", "Таблица, круговая диаграмма, прогресс и ошибки", "Представление результата пользователю."],
+        ["Выход", "JSON или TXT", "Сохранение агрегированного результата."],
+    ])
+    doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
+    add_paragraph(doc, "Следующая таблица — автоматически собранный перечень объявлений типов из исходников. Для каждого типа назначение следует сверять с определением в указанном файле; таблица не подменяет изучение кода.")
+    units = extract_cpp_units(source)
+    if units:
+        add_table(doc, ["Имя", "Вид объявления", "Назначение", "Файл-источник"], units, [3, 2.5, 6, 5])
+    else:
+        add_paragraph(doc, "Объявления типов автоматически не обнаружены. Проверить исходники вручную перед сдачей.")
+    doc.add_heading("Архитектура и потоки данных", level=2)
+    add_table(doc, ["Компонент", "Ответственность", "Связи/поток данных"], [
+        ["Domain", "Модели, перечисления и интерфейсы предметной области.", "Используется прикладным и инфраструктурным слоями; не зависит от Qt."],
+        ["FileClassifier", "Классификация файлов по расширению.", "Сканер/reader используют результат классификации."],
+        ["DirectoryScanner", "Итеративный обход, построение дерева, Direct-статистика.", "Передаёт построенное дерево агрегатору."],
+        ["DirectoryAggregator", "Агрегация Subtree/Total снизу вверх.", "Работает с деревом в памяти; не выполняет файловый ввод-вывод."],
+        ["AnalysisPipeline", "Последовательность сканирования и агрегации.", "Вызывается контроллером."],
+        ["ApplicationController", "Фоновая задача, отмена, прогресс, ошибки и передача результата.", "Связывает логику приложения с UI."],
+        ["DirectoryContentsReader / DirectoryCacheManager", "Список непосредственного содержимого и кэш для навигации.", "Поддерживают отображение выбранного каталога; не владеют деревом результата."],
+        ["VisualizationModel / MainWindow", "Подготовка данных диаграммы и GUI.", "Показывают статистику и команды пользователя."],
+        ["ExportManager", "Сериализация агрегированных данных.", "Записывает JSON/TXT."],
+    ])
+    doc.add_heading("Инструкция пользователя", level=2)
+    add_numbered(doc, [
+        "Запустить переносимую сборку для Windows x64 или Linux x86_64 либо собрать проект из исходного кода.",
+        "Указать путь к каталогу или выбрать каталог в диалоге.",
+        "Запустить анализ и дождаться завершения; при необходимости отменить задачу.",
+        "Выбирать каталоги в дереве и просматривать статистику.",
+        "Переключать область диаграммы: Direct («Только здесь»), Subtree («Вложенные каталоги») или Total («Весь каталог») — сверить точные подписи с актуальным UI.",
+        "При необходимости экспортировать результат в JSON или TXT.",
+        "После изменения файловой системы повторить полный анализ. Обновление списка непосредственного содержимого само по себе не пересчитывает всё дерево.",
+    ])
+    doc.add_heading("Состав исходных файлов", level=2)
+    add_paragraph(doc, f"В листинг включено файлов: {len(source)}. Полный перечень приведён в приложении «Листинг».")
+    for p in source:
+        add_paragraph(doc, relative(p))
+
+
+def add_testing(doc: Document, source: list[Path]) -> None:
+    doc.add_heading("Тестирование", level=1)
+    test_files = sorted((ROOT / "tests").glob("*.cpp")) if (ROOT / "tests").exists() else []
+    doc.add_heading("Автоматические тесты в репозитории", level=2)
+    if test_files:
+        rows = []
+        for p in test_files:
+            rows.append([p.stem, relative(p), "Тестовый исходник присутствует. Результат запуска не утверждается генератором; проверить CTest/CI для выбранного commit."])
+        add_table(doc, ["Тест", "Файл", "Фактический статус"], rows)
+    else:
+        add_paragraph(doc, "Тестовые файлы .cpp не обнаружены в tests/. Проверить конфигурацию тестирования.")
+    doc.add_paragraph("Для подтверждения прохождения необходимо выполнить CMake build и CTest, затем зафиксировать ссылку на конкретный успешный запуск GitHub Actions. Наличие тестового исходника не является доказательством успешного выполнения.")
+    doc.add_heading("Сценарии проверки", level=2)
+    scenarios = [
+        ["Путь к существующему каталогу с файлами разных расширений", "Анализ завершается; дерево, статистика по размерам и категориям отображаются.", "Требует запуска приложения и сверки с фактическими размерами тестовых файлов; в генераторе не выполнялся."],
+        ["Каталог с вложенными папками и файлами на обоих уровнях", "Direct отражает только непосредственные файлы; Subtree — файлы вложенных каталогов; Total равен их сумме.", "Требует ручной приёмки или отдельного подтверждённого теста."],
+        ["Пустой каталог", "Размеры и доли не приводят к делению на ноль; пустая статистика отображается корректно.", "Требует фактического прогона."],
+        ["Каталог без прав чтения / недоступный объект", "Ошибка фиксируется; доступные части обрабатываются, результат помечается согласно статусу/ошибкам реализации.", "Требует проверки на целевой ОС."],
+        ["Отмена анализа во время обхода", "Запрос отмены обрабатывается; результат и статус согласованы.", "Проверять тест ApplicationControllerTest и/или CI; конкретный результат здесь не известен."],
+        ["Выбор разных каталогов в дереве", "Статистика и диаграмма соответствуют выбранному узлу без полного повторного сканирования.", "Требует ручного GUI-теста."],
+        ["Экспорт в JSON и TXT", "Создаются файлы выбранного формата с агрегированными данными.", "Проверять ExportManagerTest/CTest; конкретный результат здесь не известен."],
+        ["Символическая ссылка на каталог", "Цель не обходится рекурсивно; не возникает циклического обхода.", "Требует проверки на ОС с поддержкой символических ссылок."],
+    ]
+    add_table(doc, ["Вводимое значение", "Предполагаемая реакция", "Действительная реакция"], scenarios)
+    doc.add_heading("Итог тестирования", level=2)
+    add_paragraph(doc, "Генератор не запускает приложение и не подменяет результаты CTest или ручной приёмки. Перед сдачей отчёта необходимо открыть GitHub Actions для commit, из которого создан документ, записать фактический статус сборки и тестов, а сценарии без подтверждения оставить помеченными как требующие проверки. Smoke-test запуска GUI не равнозначен проверке всех функций интерфейса.")
+
+
+def add_listing(doc: Document, source: list[Path]) -> None:
+    doc.add_heading("Листинг", level=1)
+    add_paragraph(doc, "Ниже приведены полные тексты файлов из текущего checkout. Если код изменится, документ необходимо сгенерировать повторно.")
+    for index, path in enumerate(source, start=1):
+        doc.add_heading(f"{index}. {relative(path)}", level=2)
+        text = read_text(path)
+        if not text.strip():
+            add_paragraph(doc, "[Файл пуст]")
+        else:
+            add_code_block(doc, text, as_table=True)
+        doc.add_paragraph()
+
+
+def add_conclusion(doc: Document) -> None:
+    doc.add_heading("Заключение", level=1)
+    add_paragraph(doc, "В курсовом проекте реализуется оконное приложение на C++17 и Qt 5 для анализа использования дискового пространства. Реализация включает собственные компоненты обхода файловой системы, классификации, построения дерева каталогов, агрегации статистики, визуализации и экспорта. Фактический состав функций и результаты проверки должны оцениваться по исходному коду и тестам выбранного commit.")
+    doc.add_heading("Известные ограничения", level=2)
+    add_bullets(doc, [
+        "Классификация файлов выполняется по расширению; MIME-тип и сигнатура содержимого не анализируются.",
+        "Символические ссылки на каталоги не обходятся рекурсивно.",
+        "Недоступные объекты могут приводить к неполной статистике.",
+        "Обновление списка непосредственного содержимого не заменяет повторный полный анализ.",
+        "Сборка и smoke-test в CI не доказывают корректность каждого пользовательского сценария на каждой целевой системе.",
+    ])
+
+
+def validate_docx(path: Path, expected_sections: list[str], expected_listing_count: int) -> None:
+    if not path.exists() or path.stat().st_size < 10_000:
+        raise RuntimeError(f"DOCX missing or suspiciously small: {path}")
+    if not zipfile.is_zipfile(path):
+        raise RuntimeError(f"Generated file is not a valid ZIP/DOCX container: {path}")
+    doc = Document(path)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    for table in doc.tables:
+        for row in table.rows:
+            text += "\n" + "\n".join(cell.text for cell in row.cells)
+    missing = [section for section in expected_sections if section not in text]
+    if missing:
+        raise RuntimeError(f"Required sections missing from DOCX: {missing}")
+    listing_headings = [p.text for p in doc.paragraphs if re.match(r"^\d+\. (src/|tests/|CMakeLists|\.github/)", p.text)]
+    if len(listing_headings) < expected_listing_count:
+        raise RuntimeError(f"Listing inventory mismatch: expected at least {expected_listing_count}, found {len(listing_headings)}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output DOCX path")
+    args = parser.parse_args()
+    output = args.output if args.output.is_absolute() else (ROOT / args.output).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    if not ASSIGNMENT.exists() or not REPORT_SPEC.exists():
+        raise SystemExit("Required reporting source documents are missing. See docs/reporting/.")
+
+    sources = source_files()
+    if not sources:
+        raise SystemExit("No source files were found. Run from a complete repository checkout.")
+
+    doc = Document()
+    configure_document(doc)
+    for section in doc.sections:
+        add_page_number(section)
+    add_title_page(doc)
+
+    doc.add_heading("Задание", level=1)
+    add_paragraph(doc, markdown_quote_text(ASSIGNMENT))
+    add_pseudocode(doc)
+    add_implementation(doc, sources)
+    add_listing(doc, sources)
+    add_testing(doc, sources)
+    add_conclusion(doc)
+
+    doc.core_properties.title = "Отчёт по курсовой работе: Disk Analyzer"
+    doc.core_properties.subject = "ТРПО, C++17, Qt 5"
+    doc.core_properties.author = "Осипенко Гавриил Васильевич"
+    doc.save(output)
+
+    expected = ["Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Листинг", "Тестирование", "Заключение"]
+    validate_docx(output, expected, len(sources))
+    manifest = output.with_suffix(".manifest.txt")
+    manifest.write_text(
+        "Generated report inventory\n"
+        f"Output: {output.name}\n"
+        f"Source/config files embedded: {len(sources)}\n"
+        + "\n".join(relative(p) for p in sources)
+        + "\n\nReminder: visual review and CI result verification are still required.\n",
+        encoding="utf-8",
+    )
+    print(f"Generated: {output}")
+    print(f"Size: {output.stat().st_size} bytes")
+    print(f"Embedded source/config files: {len(sources)}")
+    print(f"Manifest: {manifest}")
+    print("Structural validation: PASS")
+    print("Visual layout review: NOT PERFORMED by this script")
+    print("CTest/CI status: NOT queried by this script")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
