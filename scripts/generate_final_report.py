@@ -581,7 +581,7 @@ def insert_static_table_of_contents(doc: Document) -> None:
     elements.append(page_break._p)
 
     # Move the newly created paragraphs from the document end to the front matter.
-    for element in reversed(elements):
+    for element in elements:
         assignment.addprevious(element)
 
 
