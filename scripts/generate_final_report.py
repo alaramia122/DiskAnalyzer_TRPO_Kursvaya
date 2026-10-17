@@ -282,6 +282,106 @@ def _describe_unit(name: str, kind: str, file_path: Path) -> str:
     return f"Программная единица «{name}», объявленная в {relative(file_path)}."
 
 
+def _describe_function(name: str, declaration: str, file_path: Path) -> str:
+    """Give a conservative purpose statement based on the operation's name and declaration."""
+    lower = name.lstrip("~").lower()
+    if name.startswith("~"):
+        return "Завершает время жизни экземпляра и освобождает принадлежащие ему ресурсы согласно реализации."
+    if name == Path(relative(file_path)).stem:
+        return "Создаёт экземпляр и устанавливает его начальное состояние."
+    if lower.startswith(("get", "current", "root", "find", "lookup", "contains", "has", "is", "can")):
+        return f"Получает или проверяет состояние/данные, относящиеся к операции «{name}»; точное условие и возвращаемое значение задаются телом реализации."
+    if lower.startswith(("set", "select", "choose")):
+        return f"Устанавливает или выбирает значение/объект для последующей работы компонента («{name}»)."
+    if lower.startswith(("add", "append", "insert", "push", "register")):
+        return f"Добавляет элемент, связь или обработчик в структуру данных компонента («{name}»)."
+    if lower.startswith(("remove", "erase", "delete")):
+        return f"Удаляет элемент или связь из структуры данных компонента («{name}»)."
+    if lower.startswith(("clear", "reset", "invalidate")):
+        return f"Очищает или сбрасывает состояние/кэш компонента («{name}»)."
+    if any(word in lower for word in ("scan", "analy", "run", "execute", "process")):
+        return f"Выполняет этап обработки или анализа данных («{name}»)."
+    if any(word in lower for word in ("aggregate", "calculate", "compute", "build", "create")):
+        return f"Формирует структуру данных или вычисляет производные значения («{name}»)."
+    if any(word in lower for word in ("classify", "category")):
+        return f"Определяет категорию или тип обрабатываемого объекта («{name}»)."
+    if any(word in lower for word in ("read", "load", "contents", "refresh", "iterate", "open")):
+        return f"Получает данные из источника или обновляет представление содержимого («{name}»)."
+    if any(word in lower for word in ("export", "save", "write", "serialize")):
+        return f"Подготавливает и/или сохраняет данные результата («{name}»)."
+    if any(word in lower for word in ("cancel", "stop")):
+        return f"Запрашивает или выполняет прекращение текущей операции («{name}»)."
+    if any(word in lower for word in ("emit", "notify", "progress", "error", "finished", "on")):
+        return f"Обрабатывает событие или передаёт уведомление между компонентами («{name}»)."
+    return f"Выполняет операцию «{name}» в компоненте, объявленном в {relative(file_path)}; конкретная логика определяется телом метода."
+
+
+def _find_function_body(name: str, files: list[Path]) -> str | None:
+    """Return a matching C++ definition body when it can be identified conservatively."""
+    if name.startswith("~"):
+        searchable_name = re.escape(name)
+    else:
+        searchable_name = re.escape(name)
+    for path in files:
+        if path.suffix.lower() not in {".cpp", ".cc", ".cxx", ".c"}:
+            continue
+        text = read_text(path)
+        pattern = re.compile(
+            r"(?m)^[ \t]*(?:[\w:<>,~*&]+\s+)+(?:(?:[A-Za-z_]\w*)::)*"
+            + searchable_name + r"\s*\("
+        )
+        for match in pattern.finditer(text):
+            open_paren = text.find("(", match.start())
+            depth = 0
+            close_paren = -1
+            for pos in range(open_paren, len(text)):
+                if text[pos] == "(":
+                    depth += 1
+                elif text[pos] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        close_paren = pos
+                        break
+            if close_paren < 0:
+                continue
+            tail = text[close_paren + 1:close_paren + 500]
+            brace_rel = tail.find("{")
+            semi_rel = tail.find(";")
+            if brace_rel < 0 or (semi_rel >= 0 and semi_rel < brace_rel):
+                continue
+            body_start = close_paren + 1 + brace_rel
+            depth = 0
+            for pos in range(body_start, len(text)):
+                if text[pos] == "{":
+                    depth += 1
+                elif text[pos] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[body_start:pos + 1]
+    return None
+
+
+def _describe_effects(name: str, declaration: str, body: str | None) -> str:
+    """Describe effects from the declaration and available definition; state uncertainty explicitly."""
+    if body is None:
+        return "Тело определения не удалось сопоставить автоматически; по одной сигнатуре внешние изменения достоверно не определяются."
+    effects: list[str] = []
+    if re.search(r"\b(?:std::filesystem::directory_iterator|directory_iterator|file_size|status|symlink_status|ifstream|QIODevice::ReadOnly|QFileInfo|QDir::entryInfoList)\b", body):
+        effects.append("читает сведения файловой системы или содержимое источника")
+    if re.search(r"\b(?:std::ofstream|ofstream|QSaveFile|QFile|QIODevice::WriteOnly|QIODevice::ReadWrite|create_directories|remove_all)\b|\.write\s*\(", body):
+        effects.append("может создавать, записывать или изменять внешний файл/ресурс")
+    if re.search(r"\bemit\s+\w+|QMetaObject::invokeMethod|QCoreApplication::postEvent", body):
+        effects.append("передаёт Qt-сигнал или уведомление другому компоненту")
+    if re.search(r"\b(?:m_[A-Za-z_]\w*|this->\w+)\s*(?:=|\+=|-=|\+\+|--|\.push_back|\.emplace_back|\.clear|\.insert|\.erase)", body):
+        effects.append("изменяет состояние объекта или принадлежащую ему структуру данных")
+    if not effects:
+        if "const" in declaration:
+            effects.append("в теле не выявлены очевидные записи во внешние ресурсы или поля объекта")
+        else:
+            effects.append("явные внешние записи не обнаружены; возможные изменения локального/внутреннего состояния следует проверять по полному телу")
+    return "; ".join(effects) + "."
+
+
 def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
     """Extract declarations from current headers and produce documented unit cards."""
     groups: dict[str, list[list[str]]] = {
@@ -364,26 +464,12 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 output += " Создаёт или завершает время жизни экземпляра."
             else:
                 output += " Возвращает значение указанного типа; конкретный смысл определяется реализацией метода."
-            lower = name.lower()
-            effects = []
-            if "const" in declaration:
-                effects.append("метод объявлен const: изменение обычного состояния объекта не заявлено сигнатурой")
-            else:
-                effects.append("метод не объявлен const: может изменять состояние объекта; фактические изменения определяются телом метода")
-            if any(x in lower for x in ("scan", "read", "load", "refresh", "iterate", "open")):
-                effects.append("по назначению имени может читать файловую систему/источник данных")
-            if any(x in lower for x in ("export", "save", "write", "serialize")):
-                effects.append("по назначению имени может создавать или изменять выходной файл")
-            if any(x in lower for x in ("set", "add", "remove", "clear", "reset", "invalidate", "cancel", "update", "append", "insert")):
-                effects.append("имя указывает на возможное изменение переданного объекта или внутреннего состояния")
-            if any(x in lower for x in ("emit", "notify", "progress", "error", "finished")):
-                effects.append("может передавать уведомление/сигнал вызывающему коду или интерфейсу")
-            if not effects:
-                effects.append("внешние изменения по сигнатуре не определяются; тело реализации является источником истины")
+            body = _find_function_body(name, files)
+            effects_text = _describe_effects(name, declaration, body)
             groups["Функции и методы"].append([
                 name, declaration, arg_description,
-                f"Операция «{name}» компонента из файла {relative(path)}. Назначение уточняется по реализации и контексту вызова.",
-                output, "; ".join(effects) + ".", relative(path),
+                _describe_function(name, declaration, path),
+                output, effects_text, relative(path),
             ])
     for group in groups:
         groups[group].sort(key=lambda row: (row[0].lower(), row[-1].lower()))
