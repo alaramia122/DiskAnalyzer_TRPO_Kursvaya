@@ -77,6 +77,8 @@ def relative(path: Path) -> str:
 
 def configure_document(doc: Document) -> None:
     sec = doc.sections[0]
+    sec.page_width = Cm(21)
+    sec.page_height = Cm(29.7)
     sec.top_margin = Cm(2)
     sec.bottom_margin = Cm(2)
     sec.left_margin = Cm(2.5)
@@ -481,7 +483,7 @@ def _describe_effects(name: str, declaration: str, body: str | None) -> str:
         effects.append("может создавать, записывать или изменять внешний файл/ресурс")
     if re.search(r"\bemit\s+\w+|QMetaObject::invokeMethod|QCoreApplication::postEvent", body):
         effects.append("передаёт Qt-сигнал или уведомление другому компоненту")
-    if re.search(r"\b(?:m_[A-Za-z_]\w*|this->\w+)\s*(?:=|\+=|-=|\+\+|--|\.push_back|\.emplace_back|\.clear|\.insert|\.erase)", body):
+    if re.search(r"\b(?:m_[A-Za-z_]\w*|[A-Za-z_]\w*_\s*(?:=|\+=|-=|\+\+|--)|this->\w*)", body) or re.search(r"\b[A-Za-z_]\w*_\.(?:push_back|emplace_back|clear|insert|erase|mergeSubtree|addFile|addChild|reset|invalidate)\s*\(", body):
         effects.append("изменяет состояние объекта или принадлежащую ему структуру данных")
     if not effects:
         if "const" in declaration:
@@ -534,21 +536,21 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
                 body_end = text.find("}", body_start + 1) if body_start >= 0 else -1
                 members = re.sub(r"\s+", " ", text[body_start + 1:body_end]).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
                 signature = f"{kind} {name} {{ {members} }}"
-                output = "Набор именованных значений перечисления; отдельного возвращаемого значения нет."
+                output = "Задаёт допустимый набор значений; сам тип не возвращает значение."
             elif kind in {"using", "typedef"}:
                 line_end = text.find(";", match.start())
                 signature = re.sub(r"\s+", " ", text[match.start():line_end + 1]).strip() if line_end >= 0 else f"{kind} {name}"
-                output = "Псевдоним типа на этапе компиляции; во время выполнения данных не создаёт."
+                output = "Обозначает существующий тип на этапе компиляции; отдельного значения во время выполнения не создаёт."
             else:
                 members = _extract_type_members(text, match)
                 signature = f"{kind} {name}"
                 if members:
                     signature += "; поля/состав: " + " | ".join(members)
-                output = "Не возвращает значение как функция; при создании экземпляра формируется объект этого типа."
+                output = f"При создании формируется экземпляр типа {name}; объявление типа само по себе не возвращает значение."
             groups[group].append([
                 name, signature, "Аргументы конструктора/методов описываются отдельно в таблице функций и методов.",
                 description, output,
-                "Само объявление тип не изменяет; изменение состояния возможно при создании экземпляров и вызове его методов.",
+                "Объявление типа само по себе не изменяет внешние данные; состояние экземпляра изменяется его конструктором и методами.",
                 relative(path),
             ])
 
