@@ -497,9 +497,8 @@ def _describe_effects(name: str, declaration: str, body: str | None) -> str:
 def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
     """Extract declarations from current headers and produce documented unit cards."""
     groups: dict[str, list[list[str]]] = {
-        "Классы": [],
-        "Структуры": [],
-        "Интерфейсы": [],
+        "Интерфейсные классы": [],
+        "Функциональные классы": [],
         "Перечисления и псевдонимы": [],
         "Функции и методы": [],
     }
@@ -525,12 +524,10 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
             seen_types.add(key)
             if kind.startswith("enum") or kind in {"using", "typedef"}:
                 group = "Перечисления и псевдонимы"
-            elif kind == "struct":
-                group = "Структуры"
             elif name.startswith("I") or "/interfaces/" in relative(path).replace("\\", "/"):
-                group = "Интерфейсы"
+                group = "Интерфейсные классы"
             else:
-                group = "Классы"
+                group = "Функциональные классы"
             description = _describe_unit(name, kind, path)
             if kind.startswith("enum"):
                 body_start = text.find("{", match.end())
@@ -809,13 +806,24 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
     doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
     add_paragraph(doc, "Программные единицы сгруппированы по видам. Для типов указаны состав и назначение; для функций и методов — сигнатура, роль и способ передачи каждого аргумента, тип выходных данных и возможное влияние на состояние или внешние ресурсы. Сигнатуры извлекаются из заголовочных файлов текущего checkout. Для точного описания побочных эффектов и назначения каждой операции необходимо учитывать тело реализации, а не только объявление.")
     units = extract_program_units(source)
-    for group_name in ("Классы", "Структуры", "Интерфейсы", "Перечисления и псевдонимы", "Функции и методы"):
+    for group_name in ("Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы"):
         doc.add_heading(group_name, level=3)
         rows = units[group_name]
         if rows:
-            add_table(doc, ["Программная единица и сигнатура / состав", "Аргументы: роль и описание", "Назначение", "Выходные данные и изменение состояния / внешних данных", "Файл"], [[row[0] + "\n" + row[1], row[2], row[3], row[4] + "\n\n" + row[5], row[6]] for row in rows], [4.5, 5.5, 4.5, 7.0, 2.5])
+            add_table(doc, ["Имя и состав программной единицы", "Назначение в архитектуре", "Файл"], [[row[0] + "\n" + row[1], row[3], row[6]] for row in rows], [7.0, 11.0, 4.0])
         else:
             add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
+    doc.add_heading("Функции и методы", level=3)
+    function_rows = units["Функции и методы"]
+    if function_rows:
+        by_file: dict[str, list[list[str]]] = {}
+        for row in function_rows:
+            by_file.setdefault(row[6], []).append(row)
+        for file_name, rows in sorted(by_file.items()):
+            doc.add_heading(file_name, level=4)
+            add_table(doc, ["Имя и точная сигнатура", "Аргументы: роль и способ передачи", "Назначение", "Результат", "Побочные эффекты / изменение состояния"], [[row[0] + "\n" + row[1], row[2], row[3], row[4], row[5]] for row in rows], [5.0, 6.0, 5.5, 4.0, 5.5])
+    else:
+        add_paragraph(doc, "В заголовочных файлах текущего исходного кода функции и методы не обнаружены.")
 
     # Return to portrait orientation for narrative sections and source listings.
     portrait = doc.add_section(WD_SECTION.NEW_PAGE)
@@ -1015,7 +1023,7 @@ def main() -> int:
     doc.core_properties.author = "Осипенко Гавриил Васильевич"
     doc.save(output)
 
-    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Классы", "Структуры", "Интерфейсы", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
+    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
     validate_docx(output, expected, len(sources))
     manifest = output.with_suffix(".manifest.txt")
     manifest.write_text(
