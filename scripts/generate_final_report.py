@@ -667,50 +667,45 @@ def insert_static_table_of_contents(doc: Document) -> None:
 
 
 def add_title_page(doc: Document) -> None:
-    """Create the title sheet following the supplied department example.
-
-    Only the institutional word БЮДЖЕТНОЕ, course name and year are adapted;
-    the order and other identifying fields follow the example.
-    """
+    """Reproduce the provided department example's title-page order and spacing."""
     lines = [
-        ("МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ РОССИЙСКОЙ ФЕДЕРАЦИИ", True),
-        ("ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ АВТОНОМНОЕ ОБРАЗОВАТЕЛЬНОЕ УЧРЕЖДЕНИЕ ВЫСШЕГО ОБРАЗОВАНИЯ", True),
-        ("МОСКОВСКИЙ АВИАЦИОННЫЙ ИНСТИТУТ", True),
-        ("(национальный исследовательский университет)", False),
-        ("Институт № 7 «Интеллектуальные и робототехнические системы»", False),
-        ("Кафедра 703", False),
-        ("Курсовая работа по курсу", False),
-        ("«Технологии разработки программного обеспечения»", False),
-        ("«Разработка оконного приложения для анализа дискового пространства файловой системы»", False),
-        ("Выполнил студент группы М70-407С-22", False),
-        ("Осипенко Гавриил Васильевич____________", False),
-        ("Принял старший преподаватель кафедры 703", False),
-        ("Барчев Николай Борисович____________", False),
-        ("Дата сдачи отчета", False),
-        ("_______________", False),
-        ("Москва", False),
-        ("2026", False),
+        ("МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ РОССИЙСКОЙ ФЕДЕРАЦИИ ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ АВТОНОМНОЕ ОБРАЗОВАТЕЛЬНОЕ УЧРЕЖДЕНИЕ ВЫСШЕГО ОБРАЗОВАНИЯ", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("МОСКОВСКИЙ АВИАЦИОННЫЙ ИНСТИТУТ", WD_ALIGN_PARAGRAPH.CENTER, True),
+        ("(национальный исследовательский университет)", WD_ALIGN_PARAGRAPH.CENTER, True),
+        ("Институт № 7 «Интеллектуальные и робототехнические системы»", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("Кафедра 703", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("Курсовая работа по курсу", WD_ALIGN_PARAGRAPH.CENTER, True),
+        ("«Технологии разработки программного обеспечения»", WD_ALIGN_PARAGRAPH.CENTER, True),
+        ("", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("«Разработка оконного приложения для анализа дискового пространства файловой системы»", WD_ALIGN_PARAGRAPH.CENTER, True),
+        ("", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("Выполнил студент группы М70-407С-22", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("Осипенко Гавриил Васильевич____________", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("Принял старший преподаватель кафедры 703", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("Барчев Николай Борисович____________", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("Дата сдачи отчета", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("_______________", WD_ALIGN_PARAGRAPH.RIGHT, False),
+        ("", None, False),
+        ("", None, False),
+        ("", None, False),
+        ("", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("Москва", WD_ALIGN_PARAGRAPH.CENTER, False),
+        ("2026", WD_ALIGN_PARAGRAPH.CENTER, False),
     ]
-    for index, (text, bold) in enumerate(lines):
+    for text, alignment, bold in lines:
         p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if index == 9 or index == 10 or index == 11 or index == 12 or index == 13 or index == 14:
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        r = p.add_run(text)
-        r.font.name = "Times New Roman"
-        r.font.size = Pt(12 if len(text) < 80 else 10)
-        r.bold = bold
-        if index in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
-            p.paragraph_format.space_before = Pt(7)
-        if index == 6:
-            p.paragraph_format.space_before = Pt(26)
-        if index == 8:
-            p.paragraph_format.space_before = Pt(14)
-        if index == 9:
-            p.paragraph_format.space_before = Pt(30)
-        if index == 15:
-            p.paragraph_format.space_before = Pt(35)
+        if alignment is not None:
+            p.alignment = alignment
+        run = p.add_run(text)
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(14)
+        run.bold = bold
     doc.add_page_break()
+
 
 def add_pseudocode(doc: Document) -> None:
     doc.add_heading("Псевдокод алгоритмов решения задачи", level=1)
