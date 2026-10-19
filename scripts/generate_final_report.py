@@ -206,56 +206,26 @@ def _split_parameters(text: str) -> list[str]:
 
 
 def _argument_description(argument: str) -> str:
-    """Describe the role of a parameter from its declared name/type, without inventing values."""
+    """Return the declared type, parameter name, and a concise role."""
     normalized = re.sub(r"\s+", " ", argument.strip())
-    name_match = re.search(r"([A-Za-z_]\w*)\s*(?:=\s*[^,]+)?$", normalized)
-    name = name_match.group(1) if name_match else "параметр"
-    lower = name.lower()
-    if name in {"", "void"}:
-        role = "параметр отсутствует"
-    elif any(word in lower for word in ("path", "directory", "folder", "root")):
-        role = "путь/каталог, задающий объект файловой системы или область операции"
-    elif any(word in lower for word in ("file", "filename", "filepath")):
-        role = "файл или имя файла, обрабатываемое операцией"
-    elif any(word in lower for word in ("size", "bytes", "count", "total")):
-        role = "числовое значение размера или количества"
-    elif any(word in lower for word in ("category", "type", "format", "status", "scope")):
-        role = "параметр выбора категории, типа, формата, статуса или области"
-    elif any(word in lower for word in ("node", "parent", "child", "directorynode")):
-        role = "узел дерева каталогов или связь между узлами"
-    elif any(word in lower for word in ("result", "statistics", "stats", "data", "info")):
-        role = "данные результата или статистики, используемые операцией"
-    elif any(word in lower for word in ("cancel", "stop", "running")):
-        role = "состояние или запрос управления выполнением"
-    elif any(word in lower for word in ("progress", "callback", "handler", "observer")):
-        role = "функция обратного вызова/получатель уведомлений"
-    elif any(word in lower for word in ("error", "message", "reason")):
-        role = "описание ошибки или диагностическое сообщение"
-    elif lower == "argc":
-        role = "количество аргументов командной строки при запуске приложения"
-    elif lower == "argv":
-        role = "массив аргументов командной строки при запуске приложения"
-    elif any(word in lower for word in ("index", "row", "column", "level")):
-        role = "индекс, позиция или уровень элемента"
-    else:
-        role = "входное значение, необходимое для выполнения операции"
-    if "&&" in normalized:
-        mode = "входной параметр с передачей владения/перемещением (rvalue-ссылка)"
-        direction = "входной"
-    elif "&" in normalized and "const" in normalized:
-        mode = "константная ссылка"
-        direction = "входной"
-    elif "&" in normalized:
-        mode = "неконстантная ссылка"
-        direction = "входной-выходной; может быть выходным, если тело метода записывает в параметр"
-    elif "*" in normalized:
-        mode = "указатель"
-        direction = "входной или входной-выходной; nullability и направление определяются контрактом реализации"
-    else:
-        mode = "значение/копия"
-        direction = "входной"
-    return f"{normalized} — роль: {role}; направление: {direction}; способ передачи: {mode}."
-
+    normalized = re.sub(r"\s*=\s*.*$", "", normalized).strip()
+    match = re.search(r"([A-Za-z_]\w*)$", normalized)
+    name = match.group(1) if match else normalized
+    arg_type = normalized[:match.start()].strip() if match else "тип не определён"
+    low = name.lower()
+    if any(word in low for word in ("path", "directory", "folder", "root")): role = "путь/каталог для обработки"
+    elif any(word in low for word in ("file", "filename")): role = "файл для обработки"
+    elif any(word in low for word in ("size", "bytes", "count", "total")): role = "размер или количество"
+    elif any(word in low for word in ("category", "type", "format", "status", "scope")): role = "категория, формат или область"
+    elif any(word in low for word in ("node", "parent", "child")): role = "узел дерева или связь"
+    elif any(word in low for word in ("result", "statistics", "stats", "data", "info")): role = "данные результата"
+    elif any(word in low for word in ("cancel", "stop", "running")): role = "управление выполнением"
+    elif any(word in low for word in ("progress", "callback", "handler", "observer")): role = "обратный вызов/уведомление"
+    elif name == "argc": role = "число аргументов командной строки"
+    elif name == "argv": role = "аргументы командной строки"
+    elif any(word in low for word in ("index", "row", "column", "level")): role = "индекс или позиция"
+    else: role = "входные данные операции"
+    return f"{arg_type} {name} — {role}".strip()
 
 def _describe_unit(name: str, kind: str, file_path: Path) -> str:
     known = {
@@ -494,123 +464,140 @@ def _describe_effects(name: str, declaration: str, body: str | None) -> str:
     return "; ".join(effects) + "."
 
 
-def extract_program_units(files: list[Path]) -> dict[str, list[list[str]]]:
-    """Extract declarations from current headers and produce documented unit cards."""
-    groups: dict[str, list[list[str]]] = {
-        "Интерфейсные классы": [],
-        "Функциональные классы": [],
-        "Перечисления и псевдонимы": [],
-        "Функции и методы": [],
+def _architecture_group(path: Path) -> str:
+    """Map free functions to architectural elements rather than source files."""
+    parts = [part.lower() for part in Path(relative(path)).parts]
+    joined = "/".join(parts)
+    if "tests" in parts: return "Тестирование"
+    if "domain" in parts or any(token in joined for token in ("fileinfo", "categorystatistics", "directorynode", "analysisresult", "scope")): return "Доменная модель"
+    if "infrastructure" in parts or any(token in joined for token in ("scanner", "classifier", "directorycontentsreader", "directorycachemanager", "exportmanager")): return "Инфраструктура"
+    if "application" in parts or any(token in joined for token in ("analysispipeline", "applicationcontroller")): return "Прикладная логика"
+    if "visualization" in parts or "visualizationmodel" in joined: return "Визуализация"
+    if "ui" in parts or "mainwindow" in joined: return "Пользовательский интерфейс"
+    if Path(relative(path)).name == "main.cpp": return "Точка входа и композиция приложения"
+    return "Общие функции и вспомогательные компоненты"
+
+
+def _describe_member(declaration: str, owner: str) -> str:
+    """Describe a class field/property in one short sentence."""
+    cleaned = re.sub(r"\s+", " ", declaration).strip().rstrip(";")
+    match = re.search(r"([A-Za-z_]\w*)\s*(?:=.*)?$", cleaned)
+    name = match.group(1) if match else cleaned
+    low = name.lower()
+    if any(token in low for token in ("path", "directory", "root")): role = "хранит путь или привязку к каталогу"
+    elif any(token in low for token in ("size", "bytes", "count", "total")): role = "хранит размер или количество"
+    elif any(token in low for token in ("category", "type", "status", "scope")): role = "хранит категорию, тип, область или состояние"
+    elif any(token in low for token in ("child", "parent", "rootnode", "node")): role = "хранит связь или узел дерева"
+    elif any(token in low for token in ("error", "message", "reason")): role = "хранит диагностические сведения"
+    elif any(token in low for token in ("result", "statistic", "data", "info")): role = "хранит данные результата или статистики"
+    elif any(token in low for token in ("cache", "entry", "lru", "iterator")): role = "поддерживает внутреннюю структуру компонента"
+    else: role = f"хранит данные, необходимые классу {owner}"
+    return role.capitalize() + "."
+
+
+def _extract_class_spans(text: str) -> list[dict[str, object]]:
+    """Find class/struct bodies so declarations can be attached to their owning type."""
+    spans: list[dict[str, object]] = []
+    for match in re.finditer(r"\b(class|struct)\s+([A-Za-z_]\w*)", text):
+        opening = text.find("{", match.end())
+        semi = text.find(";", match.end())
+        if opening < 0 or (semi >= 0 and semi < opening): continue
+        depth, closing = 0, -1
+        for pos in range(opening, len(text)):
+            if text[pos] == "{": depth += 1
+            elif text[pos] == "}":
+                depth -= 1
+                if depth == 0:
+                    closing = pos
+                    break
+        if closing >= 0:
+            spans.append({"kind": match.group(1), "name": match.group(2), "start": match.start(), "body_start": opening + 1, "end": closing, "text": text[opening + 1:closing]})
+    return spans
+
+
+def extract_program_units(files: list[Path]) -> dict[str, list[list[object]]]:
+    """Extract classes with their members, aliases/enums, and free functions."""
+    groups: dict[str, list[list[object]]] = {
+        "Интерфейсные классы": [], "Функциональные классы": [],
+        "Перечисления и псевдонимы": [], "Функции и методы": [],
     }
-    type_pattern = re.compile(r"\b(class|struct|enum\s+class|enum|using|typedef)\s+([A-Za-z_][A-Za-z0-9_]*)")
     seen_types: set[tuple[str, str]] = set()
     seen_functions: set[tuple[str, str, str]] = set()
+    class_records: dict[tuple[str, str], list[object]] = {}
     for path in files:
-        if path.suffix.lower() not in {".h", ".hpp"}:
-            continue
+        if path.suffix.lower() not in {".h", ".hpp"}: continue
         text = read_text(path)
-        for match in type_pattern.finditer(text):
-            kind, name = match.group(1), match.group(2)
-            if name in {"if", "while", "switch"}:
-                continue
-            if kind in {"class", "struct"}:
-                opening = text.find("{", match.end())
-                semicolon = text.find(";", match.end())
-                if opening < 0 or (semicolon >= 0 and semicolon < opening):
-                    continue
+        spans = _extract_class_spans(text)
+        for span in spans:
+            kind, name = str(span["kind"]), str(span["name"])
             key = (kind, name)
-            if key in seen_types:
-                continue
+            if key in seen_types: continue
             seen_types.add(key)
-            if kind.startswith("enum") or kind in {"using", "typedef"}:
-                group = "Перечисления и псевдонимы"
-            elif name.startswith("I") or "/interfaces/" in relative(path).replace("\\", "/"):
-                group = "Интерфейсные классы"
-            else:
-                group = "Функциональные классы"
-            description = _describe_unit(name, kind, path)
+            normalized_path = relative(path).replace("\\", "/")
+            group = "Интерфейсные классы" if name.startswith("I") or "/interfaces/" in normalized_path else "Функциональные классы"
+            fields = _extract_type_members(text, re.search(r"\b" + kind + r"\s+" + re.escape(name), text))
+            member_rows = [["Свойство", field, _describe_member(field, name)] for field in fields]
+            record: list[object] = [name, _describe_unit(name, kind, path), relative(path), member_rows, kind]
+            class_records[(relative(path), name)] = record
+            groups[group].append(record)
+
+        for match in re.finditer(r"\b(enum\s+class|enum|using|typedef)\s+([A-Za-z_]\w*)", text):
+            kind, name = match.group(1), match.group(2)
+            key = (kind, name)
+            if key in seen_types: continue
+            seen_types.add(key)
             if kind.startswith("enum"):
                 body_start = text.find("{", match.end())
                 body_end = text.find("}", body_start + 1) if body_start >= 0 else -1
-                members = re.sub(r"\s+", " ", re.sub(r"/\*.*?\*/|//[^\n]*", "", text[body_start + 1:body_end], flags=re.S)).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
-                signature = f"{kind} {name} {{ {members} }}"
-                output = "Задаёт допустимый набор значений; сам тип не возвращает значение."
-            elif kind in {"using", "typedef"}:
+                values = re.sub(r"\s+", " ", re.sub(r"/\*.*?\*/|//[^\n]*", "", text[body_start + 1:body_end], flags=re.S)).strip() if body_start >= 0 and body_end > body_start else "состав не извлечён автоматически"
+                declaration = f"{kind} {name} {{ {values} }}"
+            else:
                 line_end = text.find(";", match.start())
-                signature = re.sub(r"\s+", " ", text[match.start():line_end + 1]).strip() if line_end >= 0 else f"{kind} {name}"
-                output = "Обозначает существующий тип на этапе компиляции; отдельного значения во время выполнения не создаёт."
-            else:
-                members = _extract_type_members(text, match)
-                signature = f"{kind} {name}"
-                if members:
-                    signature += "; поля/состав: " + " | ".join(members)
-                output = f"При создании формируется экземпляр типа {name}; объявление типа само по себе не возвращает значение."
-            if kind.startswith("enum"):
-                type_effects = "Не изменяет внешние данные; задаёт набор именованных значений для использования в других программных единицах."
-            elif kind in {"using", "typedef"}:
-                type_effects = "Не создаёт и не изменяет данные во время выполнения; действует только на этапе компиляции."
-            else:
-                type_effects = "Объявление типа само по себе не изменяет внешние данные; состояние экземпляра изменяется его конструктором и методами."
-            groups[group].append([
-                name, signature, "Аргументы конструктора/методов описываются отдельно в таблице функций и методов.",
-                description, output, type_effects, relative(path),
-            ])
+                declaration = re.sub(r"\s+", " ", text[match.start():line_end + 1]).strip() if line_end >= 0 else f"{kind} {name}"
+            groups["Перечисления и псевдонимы"].append([name, declaration, _describe_unit(name, kind, path), relative(path)])
 
-        # Parse declarations terminated by ';' (including multiline declarations).
-        # Definitions in .cpp are intentionally not guessed: public/private signatures are taken from headers.
-        for match in re.finditer(r"(?m)^[ \t]*(?:virtual\s+|static\s+|inline\s+|explicit\s+|constexpr\s+|friend\s+|Q_INVOKABLE\s+|Q_SLOT\s+|Q_SIGNAL\s+)*(?:[\w:~<>]+(?:\s*[*&]+)?(?:\s+|\s*[*&]\s*)+)?[A-Za-z_~]\w*\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?:=\s*0\s*)?;", text):
+        declaration_pattern = re.compile(r"(?m)^[ \t]*(?:virtual\s+|static\s+|inline\s+|explicit\s+|constexpr\s+|friend\s+|Q_INVOKABLE\s+|Q_SLOT\s+|Q_SIGNAL\s+)*(?:[\w:~<>]+(?:\s*[*&]+)?(?:\s+|\s*[*&]\s*)+)?[A-Za-z_~]\w*\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?:=\s*0\s*)?;")
+        for match in declaration_pattern.finditer(text):
             declaration = re.sub(r"\s+", " ", match.group(0)).strip()
-            if declaration.startswith(("if ", "for ", "while ", "switch ")):
-                continue
             name_match = re.search(r"([A-Za-z_~]\w*)\s*\((.*)\)", declaration)
-            if not name_match:
-                continue
+            if not name_match: continue
             name, params_text = name_match.group(1), name_match.group(2)
-            if name in {"if", "for", "while", "switch", "static_assert"}:
-                continue
-            key = (relative(path), name, declaration)
-            if key in seen_functions:
-                continue
-            seen_functions.add(key)
+            if name in {"if", "for", "while", "switch", "static_assert"}: continue
+            owner_span = next((span for span in spans if int(span["body_start"]) <= match.start() < int(span["end"])), None)
             args = _split_parameters(params_text)
             arg_description = "\n".join(_argument_description(arg) for arg in args) if args else "Нет аргументов."
+            if owner_span:
+                owner_name = str(owner_span["name"])
+                record = class_records.get((relative(path), owner_name))
+                if record and isinstance(record[3], list):
+                    record[3].append(["Метод", declaration, _describe_function(name, declaration, path)])
+                continue
+            key = (relative(path), name, declaration)
+            if key in seen_functions: continue
+            seen_functions.add(key)
             return_match = re.match(r"(.*?)(?:\b" + re.escape(name) + r"\s*\()", declaration)
-            return_type = return_match.group(1).strip() if return_match else "тип не определён автоматически"
+            return_type = return_match.group(1).strip() if return_match else "тип не определён"
             return_type = re.sub(r"^(?:(?:virtual|static|inline|explicit|constexpr|friend|Q_INVOKABLE|Q_SLOT|Q_SIGNAL)\s+)+", "", return_type).strip()
-            if name.startswith("~") or name == Path(relative(path)).stem:
-                return_type = "конструктор/деструктор"
-            output = f"Тип результата: {return_type or 'void/не определён'}."
-            if not return_type or return_type == "void":
-                output += " Возвращаемое значение отсутствует."
-            elif "конструктор" in return_type:
-                output += " Создаёт или завершает время жизни экземпляра."
-            else:
-                output += " Возвращает значение указанного типа; конкретный смысл определяется реализацией метода."
-            body = _find_function_body(name, files, Path(relative(path)).stem)
-            effects_text = _describe_effects(name, declaration, body)
-            groups["Функции и методы"].append([
-                name, declaration, arg_description,
-                _describe_function(name, declaration, path),
-                output, effects_text, relative(path),
-            ])
-    # main() is the application's composition root and is intentionally listed as a program unit.
+            if name.startswith("~") or name == Path(relative(path)).stem: return_type = "конструктор/деструктор"
+            result = "void — без возвращаемого значения" if not return_type or return_type == "void" else f"{return_type} — результат операции"
+            body = _find_function_body(name, files, None)
+            effects = _describe_effects(name, declaration, body)
+            effect_summary = []
+            if "изменяет состояние" in effects: effect_summary.append("изменяет состояние компонента")
+            if "внешний файл" in effects: effect_summary.append("записывает внешний файл/ресурс")
+            if "Qt-сигнал" in effects: effect_summary.append("передаёт Qt-сигнал/уведомление")
+            if effect_summary: result += "; " + ", ".join(effect_summary)
+            groups["Функции и методы"].append([name, declaration, args, arg_description, _describe_function(name, declaration, path), result, relative(path), _architecture_group(path)])
+
     main_path = next((path for path in files if relative(path) == "src/main.cpp"), None)
-    if main_path is not None:
+    if main_path:
         main_text = read_text(main_path)
         main_match = re.search(r"(?s)\bint\s+main\s*\((.*?)\)\s*\{", main_text)
         if main_match:
             params = _split_parameters(main_match.group(1))
-            args = "\n".join(_argument_description(arg) for arg in params) if params else "Нет аргументов."
-            groups["Функции и методы"].append([
-                "main", "int main(" + ", ".join(params) + ")",
-                args,
-                "Точка входа: создаёт QApplication, собирает зависимости сканера, классификатора, агрегатора, конвейера, контроллера и главного окна; запускает цикл обработки событий Qt.",
-                "Возвращает целочисленный код завершения приложения, полученный от цикла событий Qt.",
-                "Создаёт объекты приложения и UI, запускает цикл событий; само по себе не выполняет анализ каталога до команды пользователя.",
-                relative(main_path),
-            ])
+            groups["Функции и методы"].append(["main", "int main(" + ", ".join(params) + ")", params, "Нет аргументов." if not params else "\n".join(_argument_description(arg) for arg in params), "Создаёт QApplication и основные зависимости, затем запускает цикл событий Qt.", "int — код завершения приложения; создаёт объекты приложения и UI.", relative(main_path), "Точка входа и композиция приложения"])
     for group in groups:
-        groups[group].sort(key=lambda row: (row[0].lower(), row[-1].lower()))
+        groups[group].sort(key=lambda row: (str(row[0]).lower(), str(row[2] if len(row) > 2 else "")))
     return groups
 
 def insert_static_table_of_contents(doc: Document) -> None:
@@ -776,86 +763,83 @@ def add_pseudocode(doc: Document) -> None:
 
 
 def add_implementation(doc: Document, source: list[Path]) -> None:
+    """Describe types and functions in compact tables grouped by architecture."""
     doc.add_heading("Сведения о программной реализации", level=1)
     doc.add_heading("Сведения о выбранном языке программирования", level=2)
-    add_paragraph(doc, "Программа реализована на C++17. Для оконного интерфейса и визуализации используются Qt 5 Core, Widgets и Charts. Сборка конфигурируется CMake, автоматические тесты регистрируются через CTest, CI выполняется GitHub Actions.")
+    add_paragraph(doc, "Программа реализована на C++17. Для интерфейса и визуализации используются Qt 5 Core, Widgets и Charts. Сборка конфигурируется CMake, тесты запускаются через CTest и GitHub Actions.")
     doc.add_heading("Описание входных и выходных данных", level=2)
     add_table(doc, ["Вид", "Данные", "Назначение"], [
         ["Вход", "Путь к корневому каталогу", "Определяет область анализа."],
-        ["Вход", "Состояние файловой системы и права доступа", "Влияют на доступность объектов и полноту результата."],
-        ["Вход", "Команды интерфейса", "Запуск/отмена анализа, выбор каталога, переключение области статистики, экспорт."],
-        ["Внутренние данные", "Путь, тип, размер и категория объекта при обработке", "Используются сканером, классификатором и агрегатором согласно текущим контрактам."],
-        ["Выход", "Дерево каталогов и агрегированная статистика", "Навигация и анализ по директориям без повторного полного обхода."],
-        ["Выход", "Таблица, круговая диаграмма, прогресс и ошибки", "Представление результата пользователю."],
+        ["Вход", "Состояние файловой системы и права доступа", "Определяют доступность объектов и полноту результата."],
+        ["Вход", "Команды интерфейса", "Запуск/отмена анализа, выбор каталога, переключение статистики и экспорт."],
+        ["Внутренние данные", "Путь, тип, размер и категория объекта", "Используются сканером, классификатором и агрегатором."],
+        ["Выход", "Дерево каталогов и агрегированная статистика", "Навигация и просмотр результатов без повторного полного обхода."],
+        ["Выход", "Таблицы, диаграмма, прогресс и ошибки", "Представление результата пользователю."],
         ["Выход", "JSON или TXT", "Сохранение агрегированного результата."],
-    ])
-    # The detailed program-unit tables need a wide page to keep signatures and descriptions readable.
+    ], [3.0, 6.0, 8.0])
+
     landscape = doc.add_section(WD_SECTION.NEW_PAGE)
     landscape.orientation = WD_ORIENT.LANDSCAPE
     landscape.page_width, landscape.page_height = landscape.page_height, landscape.page_width
-    landscape.top_margin = Cm(1.5)
-    landscape.bottom_margin = Cm(1.5)
-    landscape.left_margin = Cm(1.5)
-    landscape.right_margin = Cm(1.5)
+    landscape.top_margin = Cm(1.4); landscape.bottom_margin = Cm(1.4)
+    landscape.left_margin = Cm(1.3); landscape.right_margin = Cm(1.3)
 
     doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
-    add_paragraph(doc, "Программные единицы сгруппированы по видам. Для типов указаны состав и назначение; для функций и методов — сигнатура, роль и способ передачи каждого аргумента, тип выходных данных и возможное влияние на состояние или внешние ресурсы. Сигнатуры извлекаются из заголовочных файлов текущего checkout. Для точного описания побочных эффектов и назначения каждой операции необходимо учитывать тело реализации, а не только объявление.")
+    add_paragraph(doc, "В общей таблице классов приведены только названия, назначение и файл. Для каждого класса ниже дана отдельная таблица его свойств и методов. Методы классов не дублируются в общей таблице свободных функций. Свободные функции сгруппированы по архитектурным элементам.")
     units = extract_program_units(source)
-    for group_name in ("Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы"):
+    for group_name in ("Интерфейсные классы", "Функциональные классы"):
         doc.add_heading(group_name, level=3)
         rows = units[group_name]
-        if rows:
-            add_table(doc, ["Имя и состав программной единицы", "Назначение в архитектуре", "Файл"], [[row[0] + "\n" + row[1], row[3], row[6]] for row in rows], [7.0, 11.0, 4.0])
-        else:
+        if not rows:
             add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
-    doc.add_heading("Функции и методы", level=3)
+            continue
+        add_table(doc, ["Класс", "Назначение", "Файл"], [[str(r[0]), str(r[1]), str(r[2])] for r in rows], [4.0, 15.0, 4.0])
+        for row in rows:
+            class_name, description, file_name, members = str(row[0]), str(row[1]), str(row[2]), row[3]
+            doc.add_heading(f"Класс {class_name}", level=4)
+            add_paragraph(doc, description)
+            if isinstance(members, list) and members:
+                add_table(doc, ["Элемент", "Объявление / тип", "Назначение"], [[str(m[0]), str(m[1]), str(m[2])] for m in members], [2.5, 9.0, 11.5])
+            else:
+                add_paragraph(doc, "Свойства и методы не извлечены автоматически; точный состав см. в листинге " + file_name + ".")
+    doc.add_heading("Перечисления и псевдонимы", level=3)
+    aliases = units["Перечисления и псевдонимы"]
+    if aliases:
+        add_table(doc, ["Имя", "Объявление", "Назначение", "Файл"], [[str(r[0]), str(r[1]), str(r[2]), str(r[3])] for r in aliases], [3.0, 8.0, 10.0, 4.0])
+    else:
+        add_paragraph(doc, "Перечисления и псевдонимы не обнаружены.")
+    doc.add_heading("Свободные функции", level=3)
     function_rows = units["Функции и методы"]
     if function_rows:
-        by_file: dict[str, list[list[str]]] = {}
-        for row in function_rows:
-            by_file.setdefault(row[6], []).append(row)
-        for file_name, rows in sorted(by_file.items()):
-            doc.add_heading(file_name, level=4)
-            add_table(doc, ["Имя и точная сигнатура", "Аргументы: роль и способ передачи", "Назначение", "Результат", "Побочные эффекты / изменение состояния"], [[row[0] + "\n" + row[1], row[2], row[3], row[4], row[5]] for row in rows], [5.0, 6.0, 5.5, 4.0, 5.5])
+        by_architecture: dict[str, list[list[object]]] = {}
+        for row in function_rows: by_architecture.setdefault(str(row[7]), []).append(row)
+        for architecture, rows in sorted(by_architecture.items()):
+            doc.add_heading(architecture, level=4)
+            table_rows = [[str(r[0]), str(r[1]), str(r[3] or "Нет аргументов."), str(r[4]), str(r[5]), str(r[6])] for r in rows]
+            add_table(doc, ["Функция", "Сигнатура", "Аргументы: тип, имя и роль", "Назначение", "Возвращаемое значение / изменения", "Файл"], table_rows, [2.7, 4.5, 5.0, 5.0, 4.5, 3.0])
     else:
-        add_paragraph(doc, "В заголовочных файлах текущего исходного кода функции и методы не обнаружены.")
+        add_paragraph(doc, "Свободные функции в заголовочных файлах текущего исходного кода не обнаружены.")
 
-    # Return to portrait orientation for narrative sections and source listings.
     portrait = doc.add_section(WD_SECTION.NEW_PAGE)
     portrait.orientation = WD_ORIENT.PORTRAIT
     portrait.page_width, portrait.page_height = portrait.page_height, portrait.page_width
-    portrait.top_margin = Cm(2)
-    portrait.bottom_margin = Cm(2)
-    portrait.left_margin = Cm(2.5)
-    portrait.right_margin = Cm(1.5)
-
+    portrait.top_margin = Cm(2); portrait.bottom_margin = Cm(2)
+    portrait.left_margin = Cm(2.5); portrait.right_margin = Cm(1.5)
     doc.add_heading("Архитектура и потоки данных", level=2)
-    add_table(doc, ["Компонент", "Ответственность", "Связи/поток данных"], [
-        ["Domain", "Модели, перечисления и интерфейсы предметной области.", "Используется прикладным и инфраструктурным слоями; не зависит от Qt."],
-        ["FileClassifier", "Классификация файлов по расширению.", "Сканер/reader используют результат классификации."],
-        ["DirectoryScanner", "Итеративный обход, построение дерева, Direct-статистика.", "Передаёт построенное дерево агрегатору."],
-        ["DirectoryAggregator", "Агрегация Subtree/Total снизу вверх.", "Работает с деревом в памяти; не выполняет файловый ввод-вывод."],
-        ["AnalysisPipeline", "Последовательность сканирования и агрегации.", "Вызывается контроллером."],
-        ["ApplicationController", "Фоновая задача, отмена, прогресс, ошибки и передача результата.", "Связывает логику приложения с UI."],
-        ["DirectoryContentsReader / DirectoryCacheManager", "Список непосредственного содержимого и кэш для навигации.", "Поддерживают отображение выбранного каталога; не владеют деревом результата."],
-        ["VisualizationModel / MainWindow", "Подготовка данных диаграммы и GUI.", "Показывают статистику и команды пользователя."],
-        ["ExportManager", "Сериализация агрегированных данных.", "Записывает JSON/TXT."],
-    ])
+    add_paragraph(doc, "Основной поток анализа и выходные ветви показаны на следующей схеме.")
     doc.add_heading("Инструкция пользователя", level=2)
     add_numbered(doc, [
         "Запустить переносимую сборку для Windows x64 или Linux x86_64 либо собрать проект из исходного кода.",
         "Указать путь к каталогу или выбрать каталог в диалоге.",
         "Запустить анализ и дождаться завершения; при необходимости отменить задачу.",
         "Выбирать каталоги в дереве и просматривать статистику.",
-        "Переключать область диаграммы: Direct («Только здесь»), Subtree («Вложенные каталоги») или Total («Весь каталог») — сверить точные подписи с актуальным UI.",
+        "Переключать область диаграммы: Direct («Только здесь»), Subtree («Вложенные каталоги») или Total («Весь каталог»).",
         "При необходимости экспортировать результат в JSON или TXT.",
-        "После изменения файловой системы повторить полный анализ. Обновление списка непосредственного содержимого само по себе не пересчитывает всё дерево.",
+        "После изменения файловой системы повторить полный анализ: обновление непосредственного содержимого не пересчитывает всё дерево.",
     ])
     doc.add_heading("Состав исходных файлов", level=2)
-    add_paragraph(doc, f"В листинг включено файлов: {len(source)}. Полный перечень приведён в приложении «Листинг».")
-    for p in source:
-        add_paragraph(doc, relative(p))
-
+    add_paragraph(doc, f"В листинг включено файлов: {len(source)}. Полный перечень приведён в разделе «Листинг».")
+    for p in source: add_paragraph(doc, relative(p))
 
 def add_testing(doc: Document, source: list[Path]) -> None:
     doc.add_heading("Тестирование", level=1)
@@ -895,41 +879,91 @@ def add_testing(doc: Document, source: list[Path]) -> None:
     add_paragraph(doc, "Итог ручного тестирования: все проведённые проверки актуальной версии пройдены, замечаний по результатам повторной проверки нет. Доступ к отдельным системным каталогам зависит от прав операционной системы; их содержимое нельзя считать измеренным, если система отказала в доступе.")
 
 
+def _annotate_source_for_report(path: Path, source_text: str) -> str:
+    """Add explanatory comments to the report copy; repository files remain unchanged."""
+    rel = relative(path)
+    suffix = path.suffix.lower()
+    if suffix in {".h", ".hpp", ".cpp", ".cc", ".cxx", ".c"}:
+        output: list[str] = []
+        for line in source_text.splitlines():
+            stripped = line.strip()
+            class_match = re.match(r"(?:class|struct)\s+(\w+)", stripped)
+            if class_match:
+                output.append(f"// {class_match.group(1)}: объявление типа и его контракт.")
+            elif re.match(r"(?:enum\s+class|enum)\s+\w+", stripped):
+                output.append("// Перечисление задаёт допустимые именованные значения.")
+            elif re.match(r"^[\w:<>,~*& ]+\b[A-Za-z_~]\w*\s*\([^;]*\)\s*(?:const\s*)?(?:override\s*)?(?:\{|;)?\s*$", stripped) and not stripped.startswith(("if ", "for ", "while ", "switch ", "return ")):
+                nm = re.search(r"([A-Za-z_~]\w*)\s*\(", stripped)
+                if nm and nm.group(1) not in {"if", "for", "while", "switch", "catch"}:
+                    output.append(f"// {nm.group(1)}: объявление/реализация операции; детали поясняются ниже.")
+            if re.match(r"(if|else if|else|for|while|switch|case|try|catch)\b", stripped):
+                output.append(f"// Управление потоком: {stripped.rstrip('{').strip()}.")
+            elif stripped.startswith("emit "):
+                output.append("// Уведомить подписчиков Qt-сигнала о событии.")
+            elif stripped.startswith(("return ", "return;")):
+                output.append("// Вернуть результат или завершить текущую операцию.")
+            elif re.search(r"\b(open|write|flush|close|file_size|directory_iterator|create_directories)\s*\(", stripped):
+                output.append("// Обращение к файловой системе или операция ввода-вывода.")
+            output.append(line)
+        return "\n".join(output) + ("\n" if source_text.endswith("\n") else "")
+    if rel == "CMakeLists.txt":
+        output = []
+        for line in source_text.splitlines():
+            if line.strip().startswith(("project(", "set(", "find_package(", "add_executable(", "add_library(", "target_link_libraries(", "add_subdirectory(", "enable_testing(", "add_test(")):
+                output.append("# Настройка проекта, зависимости, цели сборки или тесты.")
+            output.append(line)
+        return "\n".join(output) + "\n"
+    if suffix in {".yml", ".yaml"}:
+        output = []
+        for line in source_text.splitlines():
+            if line.strip().endswith(":") and not line.strip().startswith("#"):
+                output.append("# Этап CI/CD: " + line.strip().rstrip(":"))
+            output.append(line)
+        return "\n".join(output) + "\n"
+    return source_text
+
+
 def add_listing(doc: Document, source: list[Path]) -> None:
     doc.add_heading("Листинг", level=1)
-    add_paragraph(doc, "Ниже приведены полные тексты файлов из текущего checkout. Если код изменится, документ необходимо сгенерировать повторно.")
+    add_paragraph(doc, "Приведены все исходные файлы текущего checkout. В копии листинга добавлены пояснения к объявлениям, ветвлениям, циклам и ключевым операциям; файлы репозитория не изменяются.")
     for index, path in enumerate(source, start=1):
         doc.add_heading(f"{index}. {relative(path)}", level=2)
-        text = read_text(path)
-        if not text.strip():
-            add_paragraph(doc, "[Файл пуст]")
-        else:
-            add_code_block(doc, text, as_table=True)
+        original = read_text(path)
+        annotated = _annotate_source_for_report(path, original)
+        if not annotated.strip(): add_paragraph(doc, "[Файл пуст]")
+        else: add_code_block(doc, annotated, as_table=True)
         doc.add_paragraph()
 
-
 def add_architecture_diagram(doc: Document) -> None:
+    """Create an editable Word-native flow diagram; SmartArt authoring is not exposed by python-docx."""
     doc.add_heading("Схема архитектуры и потоков данных", level=2)
-    diagram = (
-        "Пользователь / главное окно (UI)\n"
-        "             │ команды и параметры\n"
-        "             ▼\n"
-        "ApplicationController\n"
-        "             │ запускает AnalysisPipeline\n"
-        "             ▼\n"
-        "DirectoryScanner ──► FileInfo ──► FileClassifier\n"
-        "       │ дерево каталогов и Direct-статистика\n"
-        "       ▼\n"
-        "DirectoryAggregator (Subtree и Total снизу вверх)\n"
-        "       │\n"
-        "       ▼\n"
-        "AnalysisResult ──┬──► VisualizationModel ──► Qt Charts\n"
-        "                 ├──► таблицы и навигация UI\n"
-        "                 └──► ExportManager ──► JSON / TXT"
-    )
-    add_code_block(doc, diagram, as_table=True)
-    add_paragraph(doc, "Сканер отвечает за обход файловой системы и непосредственную статистику каталогов. Агрегатор работает с построенным деревом в памяти и рассчитывает статистику поддеревьев. Результат анализа используется интерфейсом, моделью визуализации и модулем экспорта.")
-
+    add_paragraph(doc, "Основной поток анализа идёт сверху вниз; нижний уровень разветвляет результат на пользовательский интерфейс, визуализацию и экспорт.")
+    rows = [
+        ["Пользователь / MainWindow (UI)", "Команды: выбор каталога, запуск/отмена анализа, навигация, экспорт"],
+        ["↓", "↓"],
+        ["ApplicationController", "Управляет рабочей задачей, прогрессом, отменой и передачей результата"],
+        ["↓", "↓"],
+        ["AnalysisPipeline", "Последовательно запускает сканирование и агрегацию"],
+        ["↓", "↓"],
+        ["DirectoryScanner + FileClassifier", "Обход файловой системы, классификация, дерево каталогов и Direct-статистика"],
+        ["↓", "↓"],
+        ["DirectoryAggregator", "Вычисляет Subtree и Total снизу вверх по дереву в памяти"],
+        ["↓", "↓"],
+        ["AnalysisResult", "Хранит дерево и агрегированную статистику"],
+        ["↙", "↓                                      ↘"],
+        ["UI: таблицы и навигация", "VisualizationModel → Qt Charts          ExportManager → JSON/TXT"],
+    ]
+    table = add_table(doc, ["Элемент потока", "Действие / выходные данные"], rows, [7.0, 15.0])
+    for index, row in enumerate(table.rows[1:], start=1):
+        if index in {1, 3, 5, 7, 9, 11}:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for run in para.runs:
+                        run.bold = True
+                        run.font.size = Pt(10)
+    add_paragraph(doc, "Дополнительный путь навигации: DirectoryContentsReader читает непосредственное содержимое выбранного каталога, а DirectoryCacheManager кэширует список для интерфейса. Этот путь не пересчитывает агрегированную статистику всего дерева.")
+    add_paragraph(doc, "Примечание реализации: python-docx не предоставляет API создания нативного объекта SmartArt. Поэтому генератор формирует редактируемую схему из стандартных элементов таблицы Word; для преобразования именно в SmartArt потребуется отдельная операция в Microsoft Word.")
 
 def add_contracts_appendix(doc: Document) -> None:
     doc.add_heading("Приложение. Контракты программных компонентов", level=1)
