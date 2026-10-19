@@ -826,7 +826,7 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
     portrait.top_margin = Cm(2); portrait.bottom_margin = Cm(2)
     portrait.left_margin = Cm(2.5); portrait.right_margin = Cm(1.5)
     doc.add_heading("Архитектура и потоки данных", level=2)
-    add_paragraph(doc, "Основной поток анализа и выходные ветви показаны на следующей схеме.")
+    add_architecture_diagram(doc)
     doc.add_heading("Инструкция пользователя", level=2)
     add_numbered(doc, [
         "Запустить переносимую сборку для Windows x64 или Linux x86_64 либо собрать проект из исходного кода.",
@@ -1042,7 +1042,6 @@ def main() -> int:
     add_implementation(doc, sources)
     add_listing(doc, sources)
     add_testing(doc, sources)
-    add_architecture_diagram(doc)
     add_conclusion(doc)
     add_contracts_appendix(doc)
     insert_static_table_of_contents(doc)
@@ -1052,7 +1051,7 @@ def main() -> int:
     doc.core_properties.author = "Осипенко Гавриил Васильевич"
     doc.save(output)
 
-    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
+    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы", "Свободные функции", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
     validate_docx(output, expected, len(sources))
     manifest = output.with_suffix(".manifest.txt")
     manifest.write_text(
