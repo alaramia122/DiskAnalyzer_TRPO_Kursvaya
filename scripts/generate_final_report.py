@@ -7,6 +7,7 @@ verified from a real CTest/CI run and are described as unverified unless supplie
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import zipfile
@@ -1004,7 +1005,9 @@ def main() -> int:
     add_implementation(doc, sources)
     add_listing(doc, sources)
     add_testing(doc, sources)
+    add_architecture_diagram(doc)
     add_conclusion(doc)
+    add_contracts_appendix(doc)
     insert_static_table_of_contents(doc)
 
     doc.core_properties.title = "Отчёт по курсовой работе: Disk Analyzer"
@@ -1012,7 +1015,7 @@ def main() -> int:
     doc.core_properties.author = "Осипенко Гавриил Васильевич"
     doc.save(output)
 
-    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Классы", "Структуры", "Интерфейсы", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение"]
+    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Классы", "Структуры", "Интерфейсы", "Перечисления и псевдонимы", "Функции и методы", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
     validate_docx(output, expected, len(sources))
     manifest = output.with_suffix(".manifest.txt")
     manifest.write_text(
@@ -1020,7 +1023,9 @@ def main() -> int:
         f"Output: {output.name}\n"
         f"Source/config files embedded: {len(sources)}\n"
         + "\n".join(relative(p) for p in sources)
-        + "\n\nReminder: visual review and CI result verification are still required.\n",
+        + f"\n\nCI status: {os.environ.get('REPORT_CTEST_STATUS', 'not supplied')}\n"
+        + f"Commit: {os.environ.get('REPORT_COMMIT_SHA', os.environ.get('GITHUB_SHA', 'not supplied'))}\n"
+        + f"CI run: {os.environ.get('REPORT_CI_RUN_URL', 'not supplied')}\n",
         encoding="utf-8",
     )
     print(f"Generated: {output}")
@@ -1028,8 +1033,8 @@ def main() -> int:
     print(f"Embedded source/config files: {len(sources)}")
     print(f"Manifest: {manifest}")
     print("Structural validation: PASS")
-    print("Visual layout review: NOT PERFORMED by this script")
-    print("CTest/CI status: NOT queried by this script")
+    print("Visual layout review: requires artifact inspection")
+    print(f"CTest/CI status: {os.environ.get('REPORT_CTEST_STATUS', 'not supplied')}")
     return 0
 
 
