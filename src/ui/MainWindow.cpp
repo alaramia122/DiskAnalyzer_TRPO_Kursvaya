@@ -232,11 +232,13 @@ namespace ui
                 this, &MainWindow::handleAnalysisFinished);
     }
 
+    // Открывает диалог выбора корневого каталога и переносит выбранный путь в поле ввода.
     void MainWindow::chooseRootDirectory()
     {
         const QString selected = QFileDialog::getExistingDirectory(
             this, QStringLiteral("Выберите каталог для анализа"),
             rootPathEdit_->text());
+        // Обновляем поле пути только если пользователь выбрал каталог.
         if (!selected.isEmpty())
         {
             rootPathEdit_->setText(selected);
@@ -248,6 +250,7 @@ namespace ui
     void MainWindow::startAnalysis()
     {
         const QString selectedPath = rootPathEdit_->text().trimmed();
+        // Не запускаем анализ, если поле пути пустое.
         if (selectedPath.isEmpty())
         {
             QMessageBox::information(
@@ -258,6 +261,7 @@ namespace ui
 
         const QByteArray encodedPath = selectedPath.toUtf8();
         const std::filesystem::path path = std::filesystem::u8path(encodedPath.constData());
+        // Обрабатываем отказ контроллера, например если предыдущая задача ещё завершается.
         if (!controller_.startAnalysis(path))
         {
             statusLabel_->setText(
@@ -281,6 +285,7 @@ namespace ui
         currentPathLabel_->clear();
     }
 
+    // Передаёт контроллеру запрос на отмену текущего анализа.
     void MainWindow::cancelAnalysis()
     {
         controller_.cancelAnalysis();
@@ -288,12 +293,14 @@ namespace ui
         statusLabel_->setText(QStringLiteral("Запрошена отмена анализа…"));
     }
 
+    // Запрашивает путь выходного файла и экспортирует результат в формате JSON.
     void MainWindow::exportJson()
     {
         const QString selected = QFileDialog::getSaveFileName(
             this, QStringLiteral("Экспорт результатов в JSON"),
             QStringLiteral("analysis-result.json"),
             QStringLiteral("JSON (*.json)"));
+        // Отменяем экспорт, если пользователь закрыл диалог выбора файла.
         if (selected.isEmpty())
         {
             return;
@@ -316,12 +323,14 @@ namespace ui
         statusLabel_->setText(QStringLiteral("Результаты экспортированы в JSON."));
     }
 
+    // Запрашивает путь выходного файла и экспортирует результат в текстовом формате.
     void MainWindow::exportTxt()
     {
         const QString selected = QFileDialog::getSaveFileName(
             this, QStringLiteral("Экспорт результатов в TXT"),
             QStringLiteral("analysis-result.txt"),
             QStringLiteral("Текстовые файлы (*.txt)"));
+        // Отменяем экспорт, если пользователь закрыл диалог выбора файла.
         if (selected.isEmpty())
         {
             return;
@@ -344,6 +353,7 @@ namespace ui
         statusLabel_->setText(QStringLiteral("Результаты экспортированы в TXT."));
     }
 
+    // Обновляет индикатор и текст прогресса по данным фонового сканирования.
     void MainWindow::handleProgress(
         const QString& path,
         qulonglong processedFiles,
@@ -409,12 +419,14 @@ namespace ui
     {
         directoryTree_->clear();
         const domain::DirectoryNode* root = controller_.result().getRoot();
+        // Без корневого узла дерево каталогов построить нельзя.
         if (!root)
         {
             return;
         }
 
         appendDirectory(nullptr, root);
+        // Выбираем первый элемент только если дерево не пусто.
         if (directoryTree_->topLevelItemCount() > 0)
         {
             directoryTree_->setCurrentItem(directoryTree_->topLevelItem(0));
@@ -428,6 +440,7 @@ namespace ui
         QTreeWidgetItem* parentItem,
         const domain::DirectoryNode* node)
     {
+        // Не обращаемся к данным, если узел каталога отсутствует.
         if (!node)
         {
             return;
@@ -451,8 +464,10 @@ namespace ui
         }
     }
 
+    // Обрабатывает выбор каталога и обновляет связанные таблицы и диаграмму.
     void MainWindow::showSelectedDirectory(QTreeWidgetItem* item)
     {
+        // Прекращаем обработку, если виджет не передал выбранный элемент.
         if (!item)
         {
             statisticsTable_->setRowCount(0);
@@ -471,14 +486,17 @@ namespace ui
         showDirectoryContents(std::filesystem::u8path(encodedPath.constData()));
     }
 
+    // Очищает кэш локальных списков каталогов.
     void MainWindow::clearDirectoryCache()
     {
         directoryCache_.clear();
     }
 
+    // Обновляет список непосредственного содержимого выбранного каталога через кэш или локальное чтение.
     void MainWindow::refreshDirectoryContents()
     {
         auto* item = directoryTree_->currentItem();
+        // Прекращаем обработку, если виджет не передал выбранный элемент.
         if (!item)
         {
             return;
@@ -501,6 +519,7 @@ namespace ui
 
         const infrastructure::DirectoryCacheManager::FileList* cached =
             directoryCache_.find(directory);
+        // Читаем каталог заново, когда соответствующей записи нет в кэше.
         if (!cached)
         {
             infrastructure::DirectoryContentsReader reader(fileClassifier_);
@@ -512,6 +531,7 @@ namespace ui
                     QString::fromLocal8Bit(error.message.c_str()));
             }
 
+            // Не заполняем таблицу, если каталог не удалось открыть.
             if (!result.opened)
             {
                 return;
@@ -521,6 +541,7 @@ namespace ui
             cached = directoryCache_.find(directory);
         }
 
+        // Читаем каталог заново, когда соответствующей записи нет в кэше.
         if (!cached)
         {
             return;
@@ -535,9 +556,11 @@ namespace ui
                 ? QStringLiteral("Каталог") : QStringLiteral("Файл");
             QString subtreeSize = QStringLiteral("—");
             QString subtreeCategories = QStringLiteral("—");
+            // Для каталога дополнительно показываем агрегированную статистику его поддерева.
             if (info.type == domain::FileSystemObjectType::Directory)
             {
                 const auto* childNode = controller_.result().findNode(info.path);
+                // Добавляем сведения о поддереве только если каталог найден в дереве анализа.
                 if (childNode)
                 {
                     subtreeSize = formatBytes(
@@ -550,6 +573,7 @@ namespace ui
                         const quint64 count =
                             childNode->stats.direct.categories.filesCount[index] +
                             childNode->stats.subtree.categories.filesCount[index];
+                        // В сводку включаем только категории, в которых есть файлы.
                         if (count > 0)
                         {
                             summaries.append(QStringLiteral("%1: %2")
@@ -559,6 +583,7 @@ namespace ui
                     subtreeCategories = summaries.isEmpty()
                         ? QStringLiteral("Нет файлов")
                         : summaries.join(QStringLiteral("; "));
+                    // Отмечаем статистику как неполную, если обход каталога завершился не полностью.
                     if (!childNode->scanComplete)
                     {
                         subtreeCategories.prepend(QStringLiteral("НЕПОЛНО: "));
@@ -586,6 +611,7 @@ namespace ui
     void MainWindow::showStatistics(const domain::DirectoryNode* node)
     {
         statisticsTable_->setRowCount(0);
+        // Не обращаемся к данным, если узел каталога отсутствует.
         if (!node)
         {
             return;
@@ -598,6 +624,7 @@ namespace ui
             const auto& subtree = node->stats.subtree;
             const quint64 directCount = direct.categories.filesCount[index];
             const quint64 subtreeCount = subtree.categories.filesCount[index];
+            // Пропускаем категории, отсутствующие и в текущем каталоге, и во вложенных каталогах.
             if (directCount == 0 && subtreeCount == 0)
             {
                 continue;
@@ -660,6 +687,7 @@ namespace ui
         chart->setTitle(QStringLiteral("Использование дискового пространства по категориям"));
         chart->legend()->setAlignment(Qt::AlignRight);
 
+        // Формируем данные диаграммы только при наличии выбранного узла.
         if (node)
         {
             const auto scope = static_cast<visualization::StatisticsScope>(
@@ -676,6 +704,7 @@ namespace ui
             auto* series = new QtCharts::QPieSeries();
             for (const auto& value : values)
             {
+                // Не добавляем в круговую диаграмму сектор с нулевым размером.
                 if (value.sizeBytes == 0)
                 {
                     continue;
@@ -688,6 +717,7 @@ namespace ui
                 connect(slice, &QtCharts::QPieSlice::hovered, this,
                     [this, value, scopeSize](bool hovered)
                     {
+                        // Показываем дополнительную информацию, пока курсор находится над сектором диаграммы.
                         if (hovered)
                         {
                             statusLabel_->setText(
@@ -703,6 +733,7 @@ namespace ui
                     });
             }
 
+            // Добавляем серию в диаграмму, только если в ней есть ненулевые категории.
             if (series->count() > 0)
             {
                 chart->addSeries(series);
@@ -723,6 +754,7 @@ namespace ui
         delete previousChart;
     }
 
+    // Преобразует размер в байтах в удобное представление с подходящей двоичной единицей.
     QString MainWindow::formatBytes(quint64 bytes)
     {
         static const char* units[] = {"Б", "КиБ", "МиБ", "ГиБ", "ТиБ"};
@@ -737,6 +769,7 @@ namespace ui
             .arg(QString::fromUtf8(units[unit]));
     }
 
+    // Преобразует категорию файла в отображаемое пользователю название.
     QString MainWindow::categoryName(domain::FileCategory category)
     {
         switch (category)
@@ -755,6 +788,7 @@ namespace ui
         return QStringLiteral("Неизвестно");
     }
 
+    // Преобразует файловый путь в строку Qt с сохранением UTF-8.
     QString MainWindow::pathToQString(const std::filesystem::path& path)
     {
         return QString::fromUtf8(path.u8string().c_str());
