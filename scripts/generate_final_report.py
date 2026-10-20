@@ -260,9 +260,9 @@ def _describe_unit(name: str, kind: str, file_path: Path) -> str:
     if kind.startswith("enum"):
         return f"Задаёт конечный набор допустимых значений для параметра/состояния «{name}»."
     if kind == "struct":
-        return f"Структура данных «{name}», объединяющая связанные поля предметной области; точный состав указан в объявлении."
+        return f"Структура данных «{name}», объединяющая связанные поля предметной области; свойства и методы перечислены отдельно."
     if kind == "class":
-        return f"Класс «{name}», инкапсулирующий данные и операции соответствующего компонента; публичные операции перечислены ниже."
+        return f"Класс «{name}», инкапсулирующий данные и операции соответствующего компонента; свойства и методы перечислены отдельно."
     if kind in {"using", "typedef"}:
         return f"Объявляет псевдоним типа «{name}» для сокращения и унификации сигнатур."
     return f"Программная единица «{name}», объявленная в {relative(file_path)}."
@@ -536,8 +536,9 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[object]]]:
             normalized_path = relative(path).replace("\\", "/")
             group = "Интерфейсные классы" if name.startswith("I") or "/interfaces/" in normalized_path else "Функциональные классы"
             fields = _extract_type_members(text, re.search(r"\b" + kind + r"\s+" + re.escape(name), text))
-            member_rows = [["Свойство", field, _describe_member(field, name)] for field in fields]
-            record: list[object] = [name, _describe_unit(name, kind, path), relative(path), member_rows, kind]
+            record: list[object] = [name, _describe_unit(name, kind, path), relative(path),
+                                    [["Свойство", field, _describe_member(field, name)] for field in fields],
+                                    [], kind]
             class_records[(relative(path), name)] = record
             groups[group].append(record)
 
@@ -569,8 +570,21 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[object]]]:
             if owner_span:
                 owner_name = str(owner_span["name"])
                 record = class_records.get((relative(path), owner_name))
-                if record and isinstance(record[3], list):
-                    record[3].append(["Метод", declaration, _describe_function(name, declaration, path)])
+                if record and isinstance(record[4], list):
+                    return_match = re.match(r"(.*?)(?:\b" + re.escape(name) + r"\s*\()", declaration)
+                    return_type = return_match.group(1).strip() if return_match else "тип не определён"
+                    return_type = re.sub(r"^(?:(?:virtual|static|inline|explicit|constexpr|friend|Q_INVOKABLE|Q_SLOT|Q_SIGNAL)\s+)+", "", return_type).strip()
+                    if name.startswith("~") or name == owner_name:
+                        return_description = "Конструктор/деструктор — не имеет обычного возвращаемого значения."
+                    elif not return_type or return_type == "void":
+                        return_description = "void — значение не возвращается."
+                    else:
+                        return_description = f"{return_type} — возвращаемое значение метода."
+                    method_body = _find_function_body(name, files, owner_name)
+                    effect_description = _describe_effects(name, declaration, method_body)
+                    args_description = "\n".join(_argument_description(arg) for arg in args) if args else "Нет аргументов."
+                    record[4].append([name, declaration, args_description, _describe_function(name, declaration, path),
+                                       return_description + " " + effect_description])
                 continue
             key = (relative(path), name, declaration)
             if key in seen_functions: continue
@@ -766,7 +780,7 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
     """Describe types and functions in compact tables grouped by architecture."""
     doc.add_heading("Сведения о программной реализации", level=1)
     doc.add_heading("Сведения о выбранном языке программирования", level=2)
-    add_paragraph(doc, "Программа реализована на C++17. Для интерфейса и визуализации используются Qt 5 Core, Widgets и Charts. Сборка конфигурируется CMake, тесты запускаются через CTest и GitHub Actions.")
+    add_paragraph(doc, "Программа реализована на C++17 (стандарт языка C++ 2017 года). Для интерфейса и визуализации используются Qt 5 — набор библиотек и инструментов разработки; модули Core (базовые типы и сервисы), Widgets (элементы графического интерфейса) и Charts (диаграммы). CMake — система конфигурирования сборки; CTest — средство запуска тестов; GitHub Actions — система автоматизации сборки и проверок в CI (непрерывной интеграции).")
     doc.add_heading("Описание входных и выходных данных", level=2)
     add_table(doc, ["Вид", "Данные", "Назначение"], [
         ["Вход", "Путь к корневому каталогу", "Определяет область анализа."],
@@ -784,8 +798,21 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
     landscape.top_margin = Cm(1.4); landscape.bottom_margin = Cm(1.4)
     landscape.left_margin = Cm(1.3); landscape.right_margin = Cm(1.3)
 
-    doc.add_heading("Описание спроектированных структур и программных единиц", level=2)
-    add_paragraph(doc, "В общей таблице классов приведены только названия, назначение и файл. Для каждого класса ниже дана отдельная таблица его свойств и методов. Методы классов не дублируются в общей таблице свободных функций. Свободные функции сгруппированы по архитектурным элементам.")
+    doc.add_heading("Описание спроектированных типов и программных единиц", level=2)
+    add_paragraph(doc, "В таблицах различаются классы и структуры данных согласно объявлениям в исходном коде. Для каждого типа отдельно приведены таблицы свойств и методов: у свойств указаны объявление и назначение, у методов — сигнатура, аргументы, назначение и возвращаемое значение/эффекты. Методы классов не дублируются в общей таблице свободных функций. Свободные функции сгруппированы по архитектурным элементам.")
+    doc.add_heading("Расшифровка сокращений", level=3)
+    add_table(doc, ["Сокращение", "Расшифровка", "Значение в проекте"], [
+        ["API", "Application Programming Interface — программный интерфейс приложения", "Набор доступных операций и контрактов взаимодействия компонентов."],
+        ["CI", "Continuous Integration — непрерывная интеграция", "Автоматическая сборка и проверка изменений."],
+        ["CMake", "Система конфигурирования сборки", "Подготовка сборочных файлов для поддерживаемых платформ."],
+        ["CTest", "Средство запуска тестов CMake", "Запуск зарегистрированных автоматических тестов."],
+        ["JSON", "JavaScript Object Notation — текстовый формат обмена данными", "Формат экспорта результатов анализа."],
+        ["LRU", "Least Recently Used — давно не использовавшийся элемент", "Принцип вытеснения старейшей по использованию записи из кэша."],
+        ["Qt", "Кроссплатформенный набор библиотек разработки", "Создание графического интерфейса, сигналов/слотов и диаграмм."],
+        ["TXT", "Text — текстовый формат файла", "Формат экспорта результатов в обычный текст."],
+        ["UI", "User Interface — пользовательский интерфейс", "Элементы взаимодействия пользователя с приложением."],
+        ["UML", "Unified Modeling Language — унифицированный язык моделирования", "Язык визуального моделирования программных систем."],
+    ], [2.5, 8.0, 12.0])
     units = extract_program_units(source)
     for group_name in ("Интерфейсные классы", "Функциональные классы"):
         doc.add_heading(group_name, level=3)
@@ -793,15 +820,28 @@ def add_implementation(doc: Document, source: list[Path]) -> None:
         if not rows:
             add_paragraph(doc, "В текущем исходном коде программные единицы этой группы не обнаружены.")
             continue
-        add_table(doc, ["Класс", "Назначение", "Файл"], [[str(r[0]), str(r[1]), str(r[2])] for r in rows], [4.0, 15.0, 4.0])
+        add_table(doc, ["Тип", "Категория", "Назначение", "Файл"],
+                  [[str(r[0]), "Класс" if str(r[5]) == "class" else "Структура (struct)", str(r[1]), str(r[2])] for r in rows],
+                  [3.2, 3.2, 13.0, 4.0])
         for row in rows:
-            class_name, description, file_name, members = str(row[0]), str(row[1]), str(row[2]), row[3]
-            doc.add_heading(f"Класс {class_name}", level=4)
+            type_name, description, file_name = str(row[0]), str(row[1]), str(row[2])
+            properties, methods, kind = row[3], row[4], str(row[5])
+            type_label = "Класс" if kind == "class" else "Структура"
+            doc.add_heading(f"{type_label} {type_name}", level=4)
             add_paragraph(doc, description)
-            if isinstance(members, list) and members:
-                add_table(doc, ["Элемент", "Объявление / тип", "Назначение"], [[str(m[0]), str(m[1]), str(m[2])] for m in members], [2.5, 9.0, 11.5])
+            doc.add_heading("Свойства", level=5)
+            if isinstance(properties, list) and properties:
+                add_table(doc, ["Объявление / тип", "Назначение"],
+                          [[str(m[1]), str(m[2])] for m in properties], [10.0, 13.0])
             else:
-                add_paragraph(doc, "Свойства и методы не извлечены автоматически; точный состав см. в листинге " + file_name + ".")
+                add_paragraph(doc, "Свойства не обнаружены в объявлении типа.")
+            doc.add_heading("Методы", level=5)
+            if isinstance(methods, list) and methods:
+                add_table(doc, ["Метод и сигнатура", "Аргументы: тип, имя и роль", "Назначение", "Возвращаемое значение / эффекты"],
+                          [[str(m[1]), str(m[2]), str(m[3]), str(m[4])] for m in methods],
+                          [6.0, 6.0, 6.5, 6.5])
+            else:
+                add_paragraph(doc, "Методы не обнаружены автоматически в объявлении типа.")
     doc.add_heading("Перечисления и псевдонимы", level=3)
     aliases = units["Перечисления и псевдонимы"]
     if aliases:
@@ -1051,7 +1091,7 @@ def main() -> int:
     doc.core_properties.author = "Осипенко Гавриил Васильевич"
     doc.save(output)
 
-    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы", "Свободные функции", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
+    expected = ["Оглавление", "Задание", "Псевдокод алгоритмов решения задачи", "Сведения о программной реализации", "Расшифровка сокращений", "Интерфейсные классы", "Функциональные классы", "Перечисления и псевдонимы", "Свободные функции", "Листинг", "Тестирование", "Заключение", "Схема архитектуры и потоков данных", "Приложение. Контракты программных компонентов"]
     validate_docx(output, expected, len(sources))
     manifest = output.with_suffix(".manifest.txt")
     manifest.write_text(
