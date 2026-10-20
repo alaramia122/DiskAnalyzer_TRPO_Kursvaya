@@ -1,0 +1,66 @@
+name: Generate final coursework report
+
+on:
+  push:
+    branches:
+      - docs/final-report-generation-kit
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-report:
+    name: Generate and validate DOCX
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout selected revision
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install report dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-writer poppler-utils build-essential cmake qtbase5-dev libqt5charts5-dev
+          python -m pip install --disable-pip-version-check python-docx
+
+      - name: Configure, build and run CTest for the report commit
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-report -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-report --parallel
+          ctest --test-dir build-report --output-on-failure
+      - name: Generate report and paginate contents
+        env:
+          REPORT_CTEST_STATUS: passed
+          REPORT_COMMIT_SHA: ${{ github.sha }}
+          REPORT_CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report="dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx"
+          mkdir -p dist/initial-render dist/preview
+          python scripts/generate_final_report.py --output "$report"
+          libreoffice --headless --convert-to pdf --outdir dist/initial-render "$report"
+          python scripts/update_toc_page_numbers.py "$report" "dist/initial-render/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf"
+          libreoffice --headless --convert-to pdf --outdir dist/preview "$report"
+          pdfinfo "dist/preview/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf" | grep -E '^Pages:'
+          test -s "$report"
+          test -s dist/Отчет_курсовая_ТРПО_DiskAnalyzer.manifest.txt
+
+      - name: Upload report and inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskAnalyzer-final-report
+          path: |
+            dist/Отчет_курсовая_ТРПО_DiskAnalyzer.docx
+            dist/Отчет_курсовая_ТРПО_DiskAnalyzer.manifest.txt
+            dist/preview/Отчет_курсовая_ТРПО_DiskAnalyzer.pdf
+          if-no-files-found: error
+          retention-days: 30
