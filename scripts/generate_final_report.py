@@ -535,7 +535,7 @@ def extract_program_units(files: list[Path]) -> dict[str, list[list[object]]]:
             seen_types.add(key)
             normalized_path = relative(path).replace("\\", "/")
             group = "Интерфейсные классы" if name.startswith("I") or "/interfaces/" in normalized_path else "Функциональные классы"
-            fields = _extract_type_members(text, re.search(r"\b" + kind + r"\s+" + re.escape(name), text))
+            fields = _extract_type_members(text, re.search(r"\b" + kind + r"\s+" + re.escape(name) + r"\b", text))
             record: list[object] = [name, _describe_unit(name, kind, path), relative(path),
                                     [["Свойство", field, _describe_member(field, name)] for field in fields],
                                     [], kind]
