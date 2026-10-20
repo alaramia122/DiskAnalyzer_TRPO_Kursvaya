@@ -37,19 +37,13 @@ namespace domain
      */
     struct ScopeStatistics
     {
-        /**
-         * @brief Общее количество файлов.
-         */
+        /** @brief Общее количество файлов в области. */
         uint64_t filesCount = 0;
 
-        /**
-         * @brief Суммарный размер файлов в байтах.
-         */
+        /** @brief Суммарный размер файлов области в байтах. */
         uint64_t filesSizeBytes = 0;
 
-        /**
-         * @brief Статистика по категориям файлов.
-         */
+        /** @brief Разбивка количества и размера файлов по категориям. */
         CategoryStatistics categories;
     };
 
@@ -62,14 +56,10 @@ namespace domain
      */
     struct DirectoryStatistics
     {
-        /**
-         * @brief Статистика только текущей директории.
-         */
+        /** @brief Статистика только текущей директории, без потомков. */
         ScopeStatistics direct;
 
-        /**
-         * @brief Статистика директории и всего ее поддерева.
-         */
+        /** @brief Статистика всех вложенных каталогов без самой директории. */
         ScopeStatistics subtree;
 
         /**
@@ -80,17 +70,54 @@ namespace domain
         void addFile(FileCategory category, std::uintmax_t sizeBytes);
 
         /**
-         * @brief Сливает статистику поддерева в текущую (bottom-up агрегация).
-         * @param subtree Статистика дочерней директории
-         * @details Не изменяет direct-статистику.
+         * @brief Сливает статистику дочернего узла в subtree текущего узла.
+         * @param import_subtree Статистика дочерней директории.
+         * @details Не изменяет direct-статистику. Вызывающая сторона должна
+         *          обеспечить корректный порядок агрегации и очистить subtree
+         *          перед повторным расчетом.
          */
         void mergeSubtree(const DirectoryStatistics& import_subtree);
 
+        /**
+         * @brief Возвращает суммарный размер файлов категории во вложенных каталогах.
+         * @param cat Категория файлов.
+         * @return Размер в байтах; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getSubtreeCategorySize(FileCategory cat) const;
+
+        /**
+         * @brief Возвращает количество файлов категории во вложенных каталогах.
+         * @param cat Категория файлов.
+         * @return Количество файлов; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getSubtreeCategoryCount(FileCategory cat) const;
+
+        /**
+         * @brief Возвращает суммарный размер файлов категории в текущей директории.
+         * @param cat Категория файлов.
+         * @return Размер в байтах; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getDirectCategorySize(FileCategory cat) const;
+
+        /**
+         * @brief Возвращает количество файлов категории в текущей директории.
+         * @param cat Категория файлов.
+         * @return Количество файлов; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getDirectCategoryCount(FileCategory cat) const;
+
+        /**
+         * @brief Возвращает размер файлов категории в директории и ее поддереве.
+         * @param cat Категория файлов.
+         * @return Суммарный размер в байтах; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getTotalCategorySize(FileCategory cat) const;
+
+        /**
+         * @brief Возвращает количество файлов категории в директории и ее поддереве.
+         * @param cat Категория файлов.
+         * @return Суммарное количество; 0 для значения категории вне диапазона.
+         */
         std::uintmax_t getTotalCategoryCount(FileCategory cat) const;
     };
 
